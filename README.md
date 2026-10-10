@@ -22,7 +22,7 @@ If someone already hosts Pip, they'll give you an installation link:
 
 1. Open the link, choose the Miro team you want Pip in, and approve the permissions.
 2. Open the board where your trims live. In the toolbar on the left, click **+**, search `trim`, and click **Trim Finder**.
-3. In Pip's panel, tick **Greet everyone who opens this board**. From now on, he pops up by himself on that board for everyone. You can do this on as many boards as you like.
+3. In Pip's panel, tick **Show Pip to everyone who opens this board**. From now on, he pops up on that board for everyone, every time it's opened or reloaded. Anyone who can edit the board can switch this on or off for everyone, and you can turn it on for as many boards as you like.
 
 <!-- Maintainers: after setup, replace the line below with your Miro installation URL. -->
 **Install link:** *add your Miro installation URL here*
@@ -116,7 +116,7 @@ python3 -m http.server 3000      # Windows: py -m http.server 3000
 - **What he says:** edit `lines.js`. Placeholders such as `{name}`, `{query}` and `{thing}` are filled in automatically.
 - **Trim types, colors and synonyms:** edit `trims.js`. If you change the `prompt` text Pip uses to tag photos, bump `VISION_MODEL.tag` so existing photos get re-tagged.
 - **Matching sensitivity:** in `app.js`, `CONFIG.semantic.minLift` and `floor` control how confident a visual match must be. Raise them if Pip suggests trims that don't fit; lower them if he misses ones that do.
-- **Where he pops up by himself:** tick **Greet everyone who opens this board** in Pip's panel on each board you want. To change the overall behavior, edit `AUTO_OPEN` in `index.html`:
+- **Where he pops up by himself:** tick **Show Pip to everyone who opens this board** in Pip's panel on each board you want. The setting is saved on the board and shared by everyone on it. To change the overall behavior, edit `AUTO_OPEN` in `index.html`:
   - `'home'` (the default): only on ticked boards.
   - `'all'`: every board.
   - `'none'`: only when someone clicks his icon.

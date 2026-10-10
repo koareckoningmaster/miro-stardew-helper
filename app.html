@@ -335,7 +335,7 @@
       /* ---------- "Home board" switch ---------- */
       .home-switch {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         gap: 12px;
         margin: 30px 6px 0;
         color: var(--paper);
@@ -353,6 +353,7 @@
       .home-switch__box {
         position: relative;
         flex: none;
+        margin-top: 1px;
         width: 18px;
         height: 18px;
         background: var(--wood);
@@ -368,6 +369,8 @@
       }
       .home-switch input:focus-visible + .home-switch__box { outline: 2px dashed var(--paper-hi); outline-offset: 4px; }
       .home-switch.is-saving { opacity: 0.6; pointer-events: none; }
+      .home-switch__text { display: grid; gap: 3px; }
+      .home-switch__note { font-size: 12px; color: var(--paper-lo); }
 
       /* ---------- Status sign (model download / cataloguing) ---------- */
       .sign {
@@ -525,11 +528,14 @@
         <p class="dialog__hint" id="hint" hidden>Click Pip to search the board.</p>
       </section>
 
-      <!-- Per-board setting: Pip pops up for everyone only on boards where this is ticked -->
+      <!-- Per-board setting, shared by everyone on the board: Pip pops up only where this is on -->
       <label class="home-switch" id="homeSwitch" hidden>
-        <input type="checkbox" id="homeToggle" />
+        <input type="checkbox" id="homeToggle" aria-describedby="homeNote" />
         <span class="home-switch__box" aria-hidden="true"></span>
-        <span>Greet everyone who opens this board</span>
+        <span class="home-switch__text">
+          <span>Show Pip to everyone who opens this board</span>
+          <span class="home-switch__note" id="homeNote">Anyone who can edit this board can turn this on or off.</span>
+        </span>
       </label>
 
       <div class="sign frame" id="sign" role="status" hidden>

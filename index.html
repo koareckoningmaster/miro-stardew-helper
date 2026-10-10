@@ -8,8 +8,8 @@
   </head>
   <body>
     <script>
-      // Where Pip pops up on his own when someone opens a board (once per browser tab):
-      //   'home' = only on boards where someone ticked "Greet everyone who opens this board" in his panel
+      // Where Pip pops up on his own, every time someone opens or reloads a board:
+      //   'home' = only on boards where someone switched on "Show Pip to everyone who opens this board"
       //   'all'  = on every board in a team that installed him
       //   'none' = never; people open him from the cap icon in the apps toolbar
       const AUTO_OPEN = 'home';
@@ -46,15 +46,6 @@
       async function greetOnArrival() {
         if (AUTO_OPEN === 'none') return;
         if (AUTO_OPEN === 'home' && !(await isHomeBoard())) return; // not his home board: stay out of the way
-        let key = 'pip-greeted';
-        try {
-          key += `:${(await miro.board.getInfo()).id}`;
-        } catch {}
-        try {
-          if (sessionStorage.getItem(key)) return;
-          sessionStorage.setItem(key, '1');
-        } catch {} // storage can be blocked in third-party iframes; then Pip greets every load
-
         await new Promise((resolve) => setTimeout(resolve, 1500)); // let the board UI finish loading
         if (!(await openPip('arrival'))) {
           // If a panel is already open, greet with a toast instead.

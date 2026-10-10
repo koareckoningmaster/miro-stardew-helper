@@ -134,17 +134,17 @@ export const LINES = {
     'This is just a preview, so my shelves are empty. Open me in Miro to search for "{query}".',
   ],
 
-  // The "Greet everyone who opens this board" switch.
+  // The "Show Pip to everyone who opens this board" switch (one setting shared by the whole board).
   homeOn: [
-    'This is my shop now! I\'ll greet everyone who opens this board.',
-    'Moving in! From now on I\'ll say hello to everyone who opens this board.',
+    'This is my shop now! I\'ll pop up for everyone who opens this board.',
+    'Moving in! From now on I\'ll greet everyone who opens this board.',
   ],
   homeOff: [
-    'Got it. On this board I\'ll wait behind the counter until someone clicks my icon.',
-    'Okay! I\'ll stay out of the way here unless someone calls for me.',
+    'Got it, I\'ll stop popping up on this board. Anyone can bring me back from the + menu.',
+    'Okay! I\'ll stay behind the counter here. Click + and search "trim" if you need me.',
   ],
   homeError: [
-    'I couldn\'t save that setting. You may need edit access to this board.',
+    'Only people who can edit this board can change that. Ask an editor to switch me on or off.',
   ],
 
   catalogDone: [
