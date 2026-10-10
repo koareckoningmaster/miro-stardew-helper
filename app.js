@@ -54,7 +54,13 @@ const pick = (list) => list[Math.floor(Math.random() * list.length)];
 // Pip runs in preview mode: he greets and animates, but there's no board to search.
 const PREVIEW = window.self === window.top || !window.miro?.board;
 
-const firstName = (name) => (name || '').trim().split(/\s+/)[0] || '';
+function firstName(name) {
+  const words = (name || '').trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return '';
+  if (/^(the|a|an)$/i.test(words[0])) return words.slice(0, 3).join(' '); // nicknames like "The Koala": keep them whole
+  if (/^(mr|mrs|ms|mx|dr|prof)\.?$/i.test(words[0]) && words[1]) return words[1]; // skip titles
+  return words[0];
+}
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
 const lastLine = new Map();
