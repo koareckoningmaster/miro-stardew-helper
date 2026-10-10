@@ -156,6 +156,17 @@ export const LINES = {
     'Only people who can edit this board can change that. Ask an editor to switch me on or off.',
   ],
 
+  // "Fix this label"
+  fixPrompt: [
+    'Oops! I called it {thing}. What is it really? I\'ll remember.',
+    'My mistake! Tell me what this one actually is.',
+  ],
+  fixEmpty: ['Type what it is, like "gold O-ring", and I\'ll write it down.'],
+  fixThanks: [
+    'Got it, {label}! I\'ll remember that from now on.',
+    'Noted: {label}. Thanks for teaching me!',
+  ],
+
   catalogDone: [
     'All done! I\'ve looked at all {count} trim photos, so you can search by description now.',
     'Finished cataloguing {count} trims! Describe one and I\'ll find it.',

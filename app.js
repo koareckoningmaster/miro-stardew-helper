@@ -10,7 +10,7 @@
  *           asks if you'd like a closer look, then flies the viewport there with zoomTo().
  */
 import { LINES } from './lines.js';
-import { VISION_MODEL, describeTags, tagSearchText } from './trims.js';
+import { TAGGER_VERSION, VISION_MODEL, describeTags, tagSearchText } from './trims.js';
 
 /* ═════════════════════════ Config ═════════════════════════ */
 
@@ -865,7 +865,8 @@ function createVision() {
     warm: (parts) => call('warm', { parts }),
     embedText: (text) => call('embedText', { text }).then((r) => Float32Array.from(r.embedding)),
     analyzeImage: (blob) =>
-      call('analyzeImage', { blob }).then((r) => ({ embedding: Float32Array.from(r.embedding), tags: r.tags })),
+      call('analyzeImage', { blob }).then((r) => ({ embedding: Float32Array.from(r.embedding), tags: r.tags, tv: TAGGER_VERSION })),
+    retag: (blob, embedding) => call('retag', { blob, embedding: Array.from(embedding) }).then((r) => r.tags),
   };
 }
 
@@ -878,7 +879,7 @@ const visionUsable = () => !vision.state.failed && typeof vision.embedText === '
    who opens Pip afterwards gets instant, recognition-powered search. */
 
 const index = new Map(); // image id -> { tags: string[], embedding: Float32Array }
-const catalog = { queue: [], running: false, paused: false, done: 0, total: 0, failed: 0, skipped: 0, analyzed: 0 };
+const catalog = { queue: [], running: false, paused: false, done: 0, total: 0, failed: 0, skipped: 0, analyzed: 0, relabel: [], relabelling: false, relabelled: 0 };
 
 function packEmbedding(vec) {
   let max = 0;
@@ -901,16 +902,28 @@ function unpackEmbedding(e, s) {
 }
 
 function readMeta(meta) {
-  if (!meta || meta.v !== 1 || meta.model !== VISION_MODEL.tag || typeof meta.e !== 'string') return null;
+  if (!meta || meta.v !== 1 || meta.model !== VISION_MODEL.tag) return null;
   try {
-    return { tags: Array.isArray(meta.tags) ? meta.tags : [], embedding: unpackEmbedding(meta.e, meta.s) };
+    return {
+      tags: Array.isArray(meta.tags) ? meta.tags : [],
+      embedding: typeof meta.e === 'string' ? unpackEmbedding(meta.e, meta.s) : null,
+      tv: meta.tv || 1,
+      label: typeof meta.label === 'string' ? meta.label : '',
+    };
   } catch {
     return null;
   }
 }
 
 function writeMeta(entry) {
-  return { v: 1, model: VISION_MODEL.tag, tags: entry.tags, ...packEmbedding(entry.embedding) };
+  return {
+    v: 1,
+    model: VISION_MODEL.tag,
+    tags: entry.tags,
+    tv: entry.tv || 1,
+    ...(entry.label ? { label: entry.label } : {}),
+    ...(entry.embedding ? packEmbedding(entry.embedding) : {}),
+  };
 }
 
 /* ═════════════════════════ Saving the catalogue ═════════════════════════
@@ -925,10 +938,20 @@ let boardId = 'unknown';
 const savedCatalog = new Map(); // photo id -> { t: tags, e: fingerprint, s: scale }
 const save = { dirty: new Set(), timer: null, storageFailures: 0, storageOk: true, metaFailures: 0, metaOk: true, lastError: '' };
 
-const packEntry = (entry) => ({ t: entry.tags, ...packEmbedding(entry.embedding) });
+const packEntry = (entry) => ({
+  t: entry.tags,
+  g: entry.tv || 1,
+  ...(entry.label ? { u: entry.label } : {}),
+  ...(entry.embedding ? packEmbedding(entry.embedding) : {}),
+});
 function unpackEntry(packed) {
   try {
-    return { tags: Array.isArray(packed.t) ? packed.t : [], embedding: unpackEmbedding(packed.e, packed.s) };
+    return {
+      tags: Array.isArray(packed.t) ? packed.t : [],
+      embedding: typeof packed.e === 'string' ? unpackEmbedding(packed.e, packed.s) : null,
+      tv: packed.g || 1,
+      label: typeof packed.u === 'string' ? packed.u : '',
+    };
   } catch {
     return null;
   }
@@ -1082,11 +1105,13 @@ async function scanBoard() {
 
   const saved = await loadSavedCatalog();
   const unknown = [];
+  catalog.relabel = [];
   for (const image of onTop) {
     const entry = saved.has(image.id) ? unpackEntry(saved.get(image.id)) : null;
-    if (entry) {
+    if (entry?.embedding) {
       index.set(image.id, entry);
       catalog.done++;
+      if (entry.tv !== TAGGER_VERSION) catalog.relabel.push(image); // labelled by an older version
     } else {
       unknown.push(image);
     }
@@ -1094,9 +1119,10 @@ async function scanBoard() {
   // Photos the saved catalogue doesn't know (e.g. on a duplicated board) may carry tags themselves.
   await mapLimit(unknown, 6, async (image) => {
     const entry = readMeta(await image.getMetadata(CONFIG.metaKey).catch(() => undefined));
-    if (entry) {
+    if (entry?.embedding) {
       index.set(image.id, entry);
       catalog.done++;
+      if (entry.tv !== TAGGER_VERSION) catalog.relabel.push(image);
       persist(image, entry, { onPhoto: false }); // add it to the saved catalogue for next time
     } else {
       catalog.queue.push(image);
@@ -1104,7 +1130,38 @@ async function scanBoard() {
   });
   console.info(`[Pip] ${catalog.done} of ${catalog.total} trims already catalogued; ${catalog.queue.length} new.`);
   if (catalog.queue.length) runCatalog();
+  else if (catalog.relabel.length) runRelabel();
   else renderCatalogSign();
+}
+
+/** Re-runs the labelling on photos catalogued by an older version: uses each photo's saved
+    fingerprint and Miro's small preview (for colors), so it's quick and needs no re-scan. */
+async function runRelabel() {
+  if (catalog.relabelling || !catalog.relabel.length || !visionUsable()) return;
+  catalog.relabelling = true;
+  const total = catalog.relabel.length;
+  let done = 0;
+  setSign(`Updating trim labels: 0 of ${total}`, 0);
+  while (catalog.relabel.length) {
+    while (catalog.paused) await sleep(250);
+    const image = catalog.relabel.shift();
+    const entry = index.get(image.id);
+    try {
+      const preview = await image.getFile('preview').catch(() => readableImage(image));
+      entry.tags = await vision.retag(preview, entry.embedding);
+      entry.tv = TAGGER_VERSION;
+      persist(image, entry);
+      catalog.relabelled++;
+    } catch (err) {
+      console.warn(`[Pip] Couldn't relabel image ${image.id}:`, err?.message || err);
+    }
+    done++;
+    setSign(`Updating trim labels: ${done} of ${total}`, done / total);
+  }
+  catalog.relabelling = false;
+  await flushSaves();
+  setSign(`${catalog.relabelled} trim labels updated`);
+  hideSign(4000);
 }
 
 /* ═════════════════════════ Reading photos (HEIC-safe) ═════════════════════════
@@ -1271,6 +1328,7 @@ async function runCatalog() {
   catalog.running = false;
   await flushSaves(); // save the last batch right away
   renderCatalogSign();
+  if (catalog.relabel.length) setTimeout(runRelabel, 3000);
   if (index.size) ambient(line('catalogDone', { count: index.size }));
 }
 
@@ -1319,8 +1377,10 @@ function fieldsOf(item) {
         { key: 'description', text: plainText(item.description), weight: 1 },
       ];
     case 'image': {
-      const tags = index.get(item.id)?.tags || [];
+      const entry = index.get(item.id);
+      const tags = entry?.tags || [];
       return [
+        { key: 'label', text: entry?.label || '', weight: 1.8 }, // what a person told Pip it is
         { key: 'title', text: item.title || '', weight: 1.4 },
         { key: 'alt', text: item.alt || '', weight: 1.2 },
         { key: 'tags', text: tagSearchText(tags), weight: 1.3 },
@@ -1382,7 +1442,7 @@ const dot = (a, b) => {
 function visualScores(queryVec, baseVec, allowed) {
   const scores = new Map();
   if (!queryVec || !index.size) return scores;
-  const entries = [...index].filter(([id]) => !allowed || allowed.has(id));
+  const entries = [...index].filter(([id, entry]) => entry.embedding && (!allowed || allowed.has(id)));
   if (!entries.length) return scores;
   const rows = entries.map(([id, { embedding }]) => {
     const sim = dot(queryVec, embedding);
@@ -1443,12 +1503,20 @@ function snippet(text, query, max = 60) {
 }
 
 /** How Pip names a find out loud: "a white lace trim called "Bridal edge"". */
+/** "gold O-ring" -> "a gold O-ring"; leaves "the…", "some…" and plurals alone. */
+function withArticle(text) {
+  const t = text.trim();
+  if (/^(a|an|the|some)\s/i.test(t) || /s$/i.test(t.split(/\s+/).pop())) return t;
+  return `${/^[aeiou]/i.test(t) ? 'an' : 'a'} ${t}`;
+}
+
 function describe(find, query) {
   const { item } = find;
   if (item.type === 'image') {
-    const tags = index.get(item.id)?.tags || [];
+    const entry = index.get(item.id);
+    const tags = entry?.tags || [];
     const title = meaningfulTitle(item.title);
-    const base = tags.length ? describeTags(tags) : 'a trim photo';
+    const base = entry?.label ? withArticle(entry.label) : tags.length ? describeTags(tags) : 'a trim photo';
     const frame = frameTitles.get(item.parentId);
     const where = frame ? ` on the "${snippet(frame, query, 30)}" frame` : '';
     if (title) return `${base} called "${snippet(title, query, 40)}"${where}`;
@@ -1472,9 +1540,10 @@ function describe(find, query) {
 function listLabel(find, query) {
   const { item } = find;
   if (item.type !== 'image') return snippet(find.text || '', query);
-  const tags = index.get(item.id)?.tags || [];
+  const entry = index.get(item.id);
+  const tags = entry?.tags || [];
   const title = meaningfulTitle(item.title);
-  const desc = tags.length ? cap(describeTags(tags, { article: false })) : 'Trim photo';
+  const desc = entry?.label ? cap(entry.label) : tags.length ? cap(describeTags(tags, { article: false })) : 'Trim photo';
   return title ? `${title} (${desc.toLowerCase()})` : desc;
 }
 
@@ -1575,7 +1644,54 @@ function ambient(text) {
   if (greeted && canInterrupt() && askForm.hidden && choicesEl.hidden) say(text).then(showHint);
 }
 
+/* ═════════════════════════ Fixing a label ═════════════════════════
+   When Pip gets a photo wrong, you tell him what it really is. He saves it with the photo (in the
+   board's storage and on the photo itself), uses it for searching, and says it from then on. */
+
+let labelling = null; // the find being relabelled, while the search box is asking "what is it?"
+const SEARCH_PLACEHOLDER = input.placeholder;
+
+function askForLabel(find) {
+  labelling = find;
+  input.value = '';
+  input.placeholder = 'e.g. gold O-ring';
+  askForm.querySelector('.ask__go').textContent = 'Save';
+  showAsk();
+  say(line('fixPrompt', { thing: describe(find, '') }), { reveal: find.item });
+}
+
+function stopLabelling() {
+  labelling = null;
+  input.placeholder = SEARCH_PLACEHOLDER;
+  askForm.querySelector('.ask__go').textContent = 'Find';
+}
+
+async function saveLabel(raw) {
+  const find = labelling;
+  const label = raw.trim().replace(/\s+/g, ' ').slice(0, 80);
+  if (!find) return;
+  if (!label) {
+    await say(line('fixEmpty'));
+    return showAsk();
+  }
+  stopLabelling();
+  input.value = '';
+  hideAsk();
+  const entry = index.get(find.item.id) || { tags: [], embedding: null, tv: TAGGER_VERSION, label: '' };
+  entry.label = label;
+  index.set(find.item.id, entry);
+  persist(find.item, entry);
+  flushSaves();
+  if (currentFinds.length) renderFinds(currentFinds, currentFinds.length, currentQuery);
+  body.mood('happy');
+  body.nod(2);
+  await say(line('fixThanks', { label: withArticle(label) }), { reveal: find.item });
+  body.putAwayLater(2500);
+  showHint();
+}
+
 function onPipClick() {
+  if (labelling) stopLabelling();
   if (pose.card) body.putAway();
   else if (body.digging || pose.lift > 10) body.riseEmpty();
   else body.hop();
@@ -1715,10 +1831,12 @@ async function offer(finds, total, flow) {
       options.push({ label: i < finds.length - 1 ? 'Show me the next one' : 'Back to the first one', value: 'next' });
     }
     options.push({ label: 'No thanks', value: 'no' });
+    if (find.item.type === 'image') options.push({ label: 'Fix this label', value: 'fix' });
 
     const choice = await ask(options, { escapeValue: 'no' });
     if (choice === null || flow !== flowId) return;
     if (choice === 'go') return travelTo(find, flow);
+    if (choice === 'fix') return askForLabel(find);
     if (choice === 'next') {
       i = (i + 1) % finds.length;
       wrapped ||= i === 0;
@@ -1861,7 +1979,8 @@ async function boot() {
   });
   askForm.addEventListener('submit', (event) => {
     event.preventDefault();
-    runSearch(input.value);
+    if (labelling) saveLabel(input.value);
+    else runSearch(input.value);
   });
 
   if (PREVIEW) {

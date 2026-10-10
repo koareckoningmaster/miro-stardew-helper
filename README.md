@@ -8,8 +8,15 @@ A 16-bit shopkeeper who lives in your Miro board's side panel. Pip greets everyo
 
 - **Greets people as they arrive.** On the board you choose as his home, Pip's panel opens for everyone who comes in, and he says hello by name, then asks what he can help them find today. On other boards he stays out of the way until someone clicks his icon.
 - **Listens when you click him.** A search box opens inside his dialogue box. Type a word or a loose description.
-- **Actually looks at your trims.** Pip uses in-browser image recognition (a fashion-trained CLIP model) to tag every trim photo on the board by color and type, such as *lace, rickrack, pom-pom, sequin, velvet ribbon* and 25 more. He saves what he learns on the board itself, so each photo is only ever looked at once, and every visitor's Pip is ready instantly on reload. iPhone **HEIC** photos work too: Pip converts them in the browser.
+- **Actually looks at your trims.** Pip uses in-browser image recognition (a fashion-trained CLIP model) to label every photo on the board. He knows about 60 kinds of item:
+  - **Trims and ribbons:** *lace, rickrack, pom-pom, sequin, velvet ribbon…*
+  - **Beads:** *seed, bugle, faceted, trapezoid…*
+  - **Metal hardware:** *rings, D-rings, buckles, grommets, snaps, clasps…*
+  - **Buttons and embellishments.**
+
+  He names shapes for beads, buttons and charms, and measures colors from the photo's actual pixels. When he isn't sure of the exact type, he says the broader family ("bead", "metal hardware") instead of guessing. He saves what he learns on the board itself, so each photo is only ever looked at once, and every visitor's Pip is ready instantly on reload. iPhone **HEIC** photos work too: Pip converts them in the browser.
 - **Only looks at the top layer.** Photos that have another photo sitting on top of them, like backdrops behind your frames or old photos stacked under new ones, are ignored. The name of the frame a photo sits on is searchable too, so a photo on a frame called "Bridal Lace" turns up for "bridal".
+- **Learns from you.** If he labels something wrong, choose **Fix this label** and tell him what it really is. He saves it with the photo, searches by it, and uses it from then on.
 - **Finds and shows.** He holds up the best match, asks if you'd like a closer look, and zooms the board to it. You can flip through other matches or click any result directly.
 - **Has some life to him.** He blinks, breathes and talks. When you search, he ducks behind his counter and rummages, tossing spools, buttons and ribbon over the edge, then comes back up gripping a square frame that shows the trim he found as a sharp, full-resolution photo. Ask for the next one and he puts it back under the desk and pulls up another. The city outside the atelier windows follows the time of day.
 
@@ -122,7 +129,8 @@ Pip tells you which kind of match he found: "Got one" when every word matched, "
 ## Customize Pip
 
 - **What he says:** edit `lines.js`. Placeholders such as `{name}`, `{query}` and `{thing}` are filled in automatically.
-- **Trim types, colors and synonyms:** edit `trims.js`. If you change the `prompt` text Pip uses to tag photos, bump `VISION_MODEL.tag` so existing photos get re-tagged.
+- **Item types, shapes, colors and synonyms:** edit `trims.js`. After changing the vocabulary, bump `TAGGER_VERSION`. Pip then relabels every photo the next time he opens. It's quick: he reuses each photo's saved fingerprint, so he doesn't have to look at the photos again.
+- **How sure Pip must be before using a specific word:** the `TAGGING` thresholds in `trims.js`. Raise them for fewer but safer labels, or lower them for more specific ones.
 - **Matching sensitivity:** in `app.js`, `CONFIG.semantic.minLift` and `floor` control how confident a visual match must be. Raise them if Pip suggests trims that don't fit; lower them if he misses ones that do.
 - **Where he pops up by himself:** tick **Show Pip to everyone who opens this board** in Pip's panel on each board you want. The setting is saved on the board and shared by everyone on it. To change the overall behavior, edit `AUTO_OPEN` in `index.html`:
   - `'home'` (the default): only on ticked boards.
