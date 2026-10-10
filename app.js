@@ -22,6 +22,7 @@ const CONFIG = {
   metaKey: 'pipTrim', // where tags + the image fingerprint are stored on each image
   writeAltText: false, // true = also fill empty image alt text with Squeak's tags (visible to everyone)
   syncEverySec: 60, // how often to check the board for photos teammates added or removed
+  searchAt: 'shelves', // 'shelves' = walks back and searches the shelves; 'desk' = rummages under the counter
   semantic: {
     // A photo counts as a visual match only if the description fits it better than the
     // plain baseline "a trim" does (minLift) and clears an absolute floor. Raise these if
@@ -130,7 +131,54 @@ const ART = {
   'back-night': 'assets/atelier-night.png',
   front: 'assets/counter.png',
   portrait: 'assets/squeak-portrait.png', // 12 frames, 64×64 each: [open, closed, happy eyes] × [closed, o, open, grin mouth]
+  walk: 'assets/squeak-walk.png', // full-body frames for walking to the shelves and searching them
 };
+
+/* Squeak's full-body frames (assets/squeak-walk.png), redrawn from the reference sprite sheets at his
+   portrait's pixel size and palette. x/w/h: where each frame sits in the sheet. headX/feetX: anchor
+   columns for lining frames up. handX/handY: where his hand is, for items he holds or tosses.
+   away_8/toward_8 are head-and-shoulders close-ups at portrait size (turning away / arriving back). */
+const WALK_FRAMES = {
+  away_8: { x: 0, w: 53, h: 104, headX: 24.8, feetX: 25.9 },
+  toward_8: { x: 54, w: 51, h: 104, headX: 25.6, feetX: 24.7 },
+  away_7: { x: 106, w: 31, h: 84, headX: 14.7, feetX: 16.2 },
+  toward_7: { x: 138, w: 31, h: 88, headX: 14.3, feetX: 14.8 },
+  away_6: { x: 170, w: 27, h: 73, headX: 13.0, feetX: 14.9 },
+  toward_6: { x: 198, w: 27, h: 78, headX: 12.8, feetX: 14.7 },
+  away_5: { x: 226, w: 24, h: 65, headX: 12.4, feetX: 13.8 },
+  toward_5: { x: 251, w: 24, h: 66, headX: 12.2, feetX: 13.8 },
+  away_4: { x: 276, w: 21, h: 56, headX: 10.2, feetX: 10.7 },
+  toward_4: { x: 298, w: 21, h: 57, headX: 10.9, feetX: 12.5 },
+  away_3: { x: 320, w: 18, h: 48, headX: 8.6, feetX: 7.2 },
+  toward_3: { x: 339, w: 18, h: 48, headX: 9.4, feetX: 10.7 },
+  away_2: { x: 358, w: 16, h: 43, headX: 7.4, feetX: 5.5 },
+  toward_2: { x: 375, w: 16, h: 42, headX: 7.7, feetX: 8.5 },
+  away_1: { x: 392, w: 14, h: 35, headX: 6.5, feetX: 5.5 },
+  toward_1: { x: 407, w: 14, h: 36, headX: 7.0, feetX: 5.0 },
+  look_left: { x: 422, w: 15, h: 36, headX: 8.2, feetX: 7.1 },
+  look_right: { x: 438, w: 15, h: 36, headX: 8.3, feetX: 7.1 },
+  bend: { x: 454, w: 20, h: 27, headX: 12.9, feetX: 8.9, handX: 18, handY: 17 },
+  think: { x: 475, w: 17, h: 36, headX: 7.7, feetX: 8.8 },
+  look_up: { x: 493, w: 16, h: 36, headX: 5.5, feetX: 7.7 },
+  reach_up: { x: 510, w: 17, h: 37, headX: 12.5, feetX: 8.5, handX: 13, handY: 1 },
+  examine: { x: 528, w: 18, h: 35, headX: 9.6, feetX: 8.7, handX: 16, handY: 12 },
+  toss: { x: 547, w: 21, h: 35, headX: 7.6, feetX: 8.1, handX: 18, handY: 10 },
+  stand_back: { x: 569, w: 15, h: 36, headX: 6.8, feetX: 7.0 },
+};
+const SHELF_PATH = {
+  x: 48, // he walks straight back to the center shelving, under the arched window
+  closeTop: 23, // head top for the close-ups, matching the portrait
+  headTop: { 7: 25, 6: 26, 5: 27, 4: 28, 3: 30, 2: 31, 1: 32 }, // walking frames: head stays near eye level…
+  floorY: 66, // …while his feet climb to the base of the shelves
+};
+
+/** Where a full-body frame goes in the scene. */
+function walkPlacement(name) {
+  const f = WALK_FRAMES[name];
+  if (name.endsWith('_8')) return { f, x: Math.round(SHELF_PATH.x - f.headX), y: SHELF_PATH.closeTop };
+  if (/^(away|toward)_\d$/.test(name)) return { f, x: Math.round(SHELF_PATH.x - f.headX), y: SHELF_PATH.headTop[name.slice(-1)] };
+  return { f, x: Math.round(SHELF_PATH.x - f.feetX), y: SHELF_PATH.floorY - f.h };
+}
 const SCENE_SIZE = 96;
 const PORTRAIT = { x: 13, y: 18, size: 64 }; // head centered under the big arched window
 const EYES = ['open', 'closed', 'happy'];
@@ -141,7 +189,7 @@ const shopCtx = shopCanvas.getContext('2d');
 const RES = Math.round(3 * Math.min(2, Math.max(1, window.devicePixelRatio || 1)));
 shopCanvas.width = shopCanvas.height = SCENE_SIZE * RES;
 const images = {};
-const pose = { eyes: 'open', mouth: 'closed', breath: 0, lift: 0, dx: 0, card: null, cardItemId: null, shake: 0 };
+const pose = { eyes: 'open', mouth: 'closed', breath: 0, lift: 0, dx: 0, card: null, cardItemId: null, shake: 0, away: null, handItem: null, cardLift: 0 };
 let paintQueued = false;
 
 function loadArt() {
@@ -172,14 +220,18 @@ function draw() {
   if (back) ctx.drawImage(back, 0, 0);
   const px = PORTRAIT.x + pose.dx;
   const py = PORTRAIT.y + pose.breath + pose.lift;
-  if (images.portrait) {
+  if (pose.away && images.walk) {
+    drawAway(ctx);
+  } else if (images.portrait) {
+    placeEmote(null);
     const frame = EYES.indexOf(pose.eyes) * MOUTHS.length + MOUTHS.indexOf(pose.mouth);
     const { size } = PORTRAIT;
     ctx.drawImage(images.portrait, frame * size, 0, size, size, px, py, size, size);
   }
-  // While he's below the counter the card is too; once he's up, he holds it out in front of it.
-  const cardInFront = pose.card && pose.lift <= 4;
-  if (pose.card && !cardInFront) drawHeld(ctx, px, py);
+  // While the frame is below the counter it's behind it; once it's up, he holds it out in front.
+  const holding = pose.card && !pose.away;
+  const cardInFront = holding && pose.lift <= 4 && pose.cardLift <= 4;
+  if (holding && !cardInFront) drawHeld(ctx, px, py);
   drawParticles(ctx, true);
   if (images.front) ctx.drawImage(images.front, 0, 0);
   if (cardInFront) drawHeld(ctx, px, py);
@@ -303,6 +355,13 @@ const sprites = {
   frame: frameSprite(),
   tossables: TOSSABLES.map((rows) => pixelSprite(rows)),
   sparkle: pixelSprite(SPARKLE),
+  smallTrims: [
+    ['.BB.', 'BbbB', '.BB.'], // button
+    ['.P.', 'PpP', '.P.'], // pom-pom
+    ['RRQ', 'QRR'], // ribbon snip
+    ['YYY', 'yYy'], // little spool
+    ['WlW', '.W.'], // lace scrap
+  ].map((rows) => pixelSprite(rows)),
   puff: pixelSprite(PUFF),
 };
 
@@ -420,6 +479,24 @@ function toss(count = 1) {
   startLoop();
 }
 
+/** A trim he decided against, tossed from his hand onto the floor by the shelves. */
+function tossFromHand(frame) {
+  if (reduceMotion) return;
+  const { f, x, y } = walkPlacement(frame);
+  if (f.handX === undefined) return;
+  particles.push({
+    sprite: pick(sprites.smallTrims),
+    x: x + f.handX,
+    y: y + f.handY,
+    vx: 0.45 + Math.random() * 0.35,
+    vy: -0.9 - Math.random() * 0.5,
+    g: 0.08,
+    floor: SHELF_PATH.floorY + 1 + Math.round(Math.random() * 3),
+    behind: true,
+  });
+  startLoop();
+}
+
 function sparkle(x, y) {
   if (reduceMotion) return;
   particles.push({ sprite: sprites.sparkle, x, y, vx: 0, vy: -0.15, g: 0, life: 28, behind: false });
@@ -443,6 +520,14 @@ function startLoop() {
       p.vy += p.g;
       p.x += p.vx;
       p.y += p.vy;
+      if (p.floor && p.y >= p.floor) {
+        // landed by the shelves: settle, then fade
+        p.y = p.floor;
+        p.vx = p.vy = p.g = 0;
+        p.floor = 0;
+        p.life = 40;
+        p.fade = true;
+      }
       if (p.life !== undefined) p.life--;
       if (p.y > 100 || p.life <= 0) particles.splice(i, 1);
     }
@@ -456,16 +541,45 @@ function startLoop() {
 function drawParticles(ctx, behind) {
   for (const p of particles) {
     if (p.behind !== behind) continue;
-    ctx.globalAlpha = p.fade ? Math.max(0, p.life / 22) : 1;
+    ctx.globalAlpha = p.fade ? Math.max(0, Math.min(1, p.life / 22)) : 1;
     ctx.drawImage(p.sprite, Math.round(p.x - p.sprite.width / 2), Math.round(p.y - p.sprite.height / 2));
   }
   ctx.globalAlpha = 1;
 }
 
+/** Keeps the "!" / "?" bubble beside his head wherever he is (scene pixels → % of the scene). */
+let emoteSpot = '';
+function placeEmote(x, y) {
+  const spot = x === null ? '' : `${(x / SCENE_SIZE) * 100}%|${(Math.max(0, y - 9) / SCENE_SIZE) * 100}%`;
+  if (spot === emoteSpot) return;
+  emoteSpot = spot;
+  const [left, top] = spot ? spot.split('|') : ['', ''];
+  emoteEl.style.left = left; // empty = back to its spot beside the portrait (set in the CSS)
+  emoteEl.style.top = top;
+}
+
+/** Squeak away from the counter: a full-body frame, a soft floor shadow, and whatever he's holding. */
+function drawAway(ctx) {
+  const { f, x, y } = walkPlacement(pose.away);
+  const foot = y + f.h - 1;
+  if (!pose.away.endsWith('_8') && foot < 80) {
+    const half = Math.max(3, Math.round(f.w * 0.35));
+    ctx.fillStyle = 'rgba(30, 20, 10, 0.28)';
+    ctx.fillRect(SHELF_PATH.x - half + 1, foot, half * 2 - 2, 1);
+    ctx.fillRect(SHELF_PATH.x - half, foot + 1, half * 2, 1);
+  }
+  ctx.drawImage(images.walk, f.x, 0, f.w, f.h, x, y, f.w, f.h);
+  placeEmote(x + f.w - 2, y);
+  if (pose.handItem && f.handX !== undefined) {
+    const item = pose.handItem;
+    ctx.drawImage(item, x + f.handX - (item.width >> 1), y + f.handY - item.height + 1);
+  }
+}
+
 function drawHeld(ctx, px, py) {
   const held = pose.card;
   const fx = px + FRAME.dx + pose.shake;
-  const fy = py + FRAME.dy;
+  const fy = py + FRAME.dy + pose.cardLift;
   const win = FRAME.size - FRAME.border * 2;
   const wx = fx + FRAME.border;
   const wy = fy + FRAME.border;
@@ -499,6 +613,7 @@ const body = {
   talkTimer: null,
   moveTimers: [],
   motionId: 0, // every new move cancels the one before it
+  atShelves: false,
   digging: false,
   digTimer: null,
 
@@ -602,8 +717,87 @@ const body = {
     }, 150);
   },
 
+  /** One frame of the shelf trip. Returns false if a newer move took over. */
+  async showFrame(id, away, ms, handItem = null) {
+    if (id !== this.motionId) return false;
+    setPose({ away, handItem });
+    await sleep(ms);
+    return id === this.motionId;
+  },
+
+  /** Turn around, walk back to the shelves, and search them until called back with comeBack(). */
+  async goToShelves() {
+    if (reduceMotion || !images.walk) return this.dig(true);
+    clearInterval(this.digTimer);
+    this.digging = false;
+    const id = ++this.motionId;
+    this.atShelves = true;
+    setPose({ card: null, cardItemId: null, lift: 0, dx: 0, cardLift: 0 });
+    if (!(await this.showFrame(id, 'away_8', 220))) return;
+    for (const k of [7, 6, 5, 4, 3, 2, 1]) if (!(await this.showFrame(id, `away_${k}`, 115))) return;
+    // Searching: a looping routine through the reference poses, picking things up and tossing the misses.
+    const routine = [
+      ['stand_back', 320], ['look_up', 420], ['reach_up', 520], ['examine', 560, 'hold'], ['toss', 360, 'toss'],
+      ['look_left', 380], ['bend', 600], ['think', 640], ['look_right', 380], ['reach_up', 480],
+      ['examine', 520, 'hold'], ['toss', 360, 'toss'],
+    ];
+    for (let i = 0; id === this.motionId && this.atShelves; i++) {
+      const [frame, ms, action] = routine[i % routine.length];
+      const held = action === 'hold' ? pick(sprites.smallTrims) : null;
+      if (id !== this.motionId) return;
+      setPose({ away: frame, handItem: held });
+      if (action === 'toss') tossFromHand(frame);
+      await sleep(ms);
+    }
+  },
+
+  /** Walk back from the shelves; with an item, raise it over the counter in the frame. */
+  async returnFromShelves(item) {
+    const id = ++this.motionId;
+    this.atShelves = false;
+    const held = item ? makeHeld(item) : null;
+    if (item) {
+      // the "aha" moment: hold it up to the light
+      if (!(await this.showFrame(id, 'examine', 520, sprites.sparkle))) return;
+    } else if (!(await this.showFrame(id, 'look_right', 320))) return;
+    for (const k of [1, 2, 3, 4, 5, 6, 7]) if (!(await this.showFrame(id, `toward_${k}`, 115))) return;
+    if (!(await this.showFrame(id, 'toward_8', 200))) return;
+    if (!item) {
+      setPose({ away: null, handItem: null, lift: 0 });
+      return;
+    }
+    await Promise.race([held.ready, sleep(1200)]);
+    if (id !== this.motionId) return;
+    setPose({ away: null, handItem: null, lift: 0, card: held, cardItemId: item.id, cardLift: 34 });
+    for (const cardLift of [24, 14, 6, 1, -1, 0]) {
+      if (id !== this.motionId) return;
+      setPose({ cardLift });
+      await sleep(55);
+    }
+    sparkle(PORTRAIT.x + FRAME.dx + FRAME.size - 2, PORTRAIT.y + FRAME.dy + 1);
+    for (const shake of [1, -1, 1, 0]) {
+      if (id !== this.motionId) return;
+      setPose({ shake });
+      await sleep(70);
+    }
+  },
+
+  /** Back to the counter from wherever he is: walking back from the shelves, or up from under the desk. */
+  comeBack(item = null) {
+    if (pose.away) return this.returnFromShelves(item);
+    return item ? this.presentItem(item) : this.riseEmpty();
+  },
+
+  /** Skip straight back to the counter (e.g. clicked mid-search). */
+  comeBackNow() {
+    this.motionId++;
+    this.atShelves = false;
+    setPose({ away: null, handItem: null, lift: 0, cardLift: 0 });
+  },
+
   /** Reach under the counter (if not already down there) and come up holding a card of `item`. */
   async presentItem(item) {
+    if (pose.away) this.comeBackNow();
     const held = makeHeld(item);
     clearInterval(this.digTimer);
     this.digging = false;
@@ -1774,6 +1968,7 @@ async function saveLabel(raw) {
 function onSqueakClick() {
   if (labelling) stopLabelling();
   if (pose.card) body.putAway();
+  else if (pose.away) body.comeBackNow();
   else if (body.digging || pose.lift > 10) body.riseEmpty();
   else body.hop();
   if (!askForm.hidden && !busy) {
@@ -1819,7 +2014,8 @@ async function runSearch(raw) {
   hideAsk();
   body.mood('neutral');
   popEmote('?');
-  body.dig(true); // ducks behind the counter and rummages, tossing trims over the edge
+  if (CONFIG.searchAt === 'shelves') body.goToShelves(); // turns, walks back and searches the shelves
+  else body.dig(true); // ducks behind the counter and rummages, tossing trims over the edge
   catalog.paused = true;
   say(line('searching', { query }));
 
@@ -1831,7 +2027,7 @@ async function runSearch(raw) {
       miro.board.get({ type: CONFIG.searchTypes }),
       miro.board.get({ type: 'frame' }).catch(() => []),
       queryVector(query, 1500),
-      sleep(reduceMotion ? 0 : 2000), // give the rummaging time to read, even on small boards
+      sleep(reduceMotion ? 0 : CONFIG.searchAt === 'shelves' ? 3200 : 2000), // time to see him search, even on small boards
     ]);
     rememberFrames(frames);
     syncWithBoard(items.filter((item) => item.type === 'image')); // pick up teammates' changes
@@ -1841,7 +2037,7 @@ async function runSearch(raw) {
   } catch (err) {
     console.error('[Squeak] Search failed:', err);
     finishSearching();
-    body.riseEmpty();
+    body.comeBack();
     if (flow === flowId) await say(line('boardError'));
     return endFlow(flow);
   }
@@ -1862,7 +2058,7 @@ async function runSearch(raw) {
   renderFinds(finds, ranked.length, query);
 
   if (!finds.length) {
-    body.riseEmpty(); // comes back up empty-handed
+    body.comeBack(); // comes back empty-handed
     popEmote('?');
     const left = catalog.queue.length + (catalog.running ? 1 : 0);
     await say(left ? line('noneYet', { query, left }) : line('none', { query }));
@@ -1882,13 +2078,12 @@ function finishSearching() {
 async function offer(finds, total, flow) {
   let i = 0;
   let wrapped = false;
-  // "Sure" = the words or tags matched; otherwise Squeak is going by how the photos look.
   // How Squeak phrases it: every word matched, some words matched, or going by how the photos look.
   const confidence = !finds[0].keyword ? 'guess' : finds[0].coverage === 1 ? 'sure' : 'partial';
+  await body.comeBack(finds[0].item); // walks back from the shelves (or up from the desk) holding it
+  if (flow !== flowId) return;
   body.mood('happy');
   popEmote('!');
-  await body.presentItem(finds[0].item); // comes up from under the counter holding it
-  if (flow !== flowId) return;
 
   while (flow === flowId) {
     const find = finds[i];

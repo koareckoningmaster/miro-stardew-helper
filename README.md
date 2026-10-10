@@ -19,7 +19,7 @@ A 16-bit shopkeeper who lives in your Miro board's side panel. Squeak greets eve
 - **Keeps up with the board.** New photos get catalogued, whether you add them or a teammate does (he checks the board about once a minute and on every search). Deleted photos are forgotten, saved catalogue included. Copied or duplicated photos bring their tags along, so they don't need cataloguing again.
 - **Learns from you.** If he labels something wrong, choose **Fix this label** and tell him what it really is. He saves it with the photo, searches by it, and uses it from then on.
 - **Finds and shows.** He holds up the best match, asks if you'd like a closer look, and zooms the board to it. You can flip through other matches or click any result directly.
-- **Has some life to him.** He blinks, breathes and talks. When you search, he ducks behind his counter and rummages, tossing spools, buttons and ribbon over the edge, then comes back up gripping a square frame that shows the trim he found as a sharp, full-resolution photo. Ask for the next one and he puts it back under the desk and pulls up another. The city outside the atelier windows follows the time of day.
+- **Has some life to him.** He blinks, breathes and talks. When you search, he turns around and walks back to the shelves behind his counter. There he looks up, reaches for the top shelf, bends down to the bottom one, stops to think, and picks trims up to examine them, tossing aside the ones that aren't right. Then he walks back and raises a square frame over the counter showing the trim he found, as a sharp, full-resolution photo. Ask for the next one and he reaches under the desk and pulls up another. The city outside the atelier windows follows the time of day.
 
 ![Squeak greeting a visitor and taking a search](docs/panel.png)
 
@@ -137,6 +137,7 @@ Squeak tells you which kind of match he found: "Got one" when every word matched
   - `'home'` (the default): only on ticked boards.
   - `'all'`: every board.
   - `'none'`: only when someone clicks his icon.
+- **Where he searches:** `CONFIG.searchAt` in `app.js`. Use `'shelves'` (the default) to have him walk back and search the shelves, or `'desk'` to have him rummage under the counter.
 - **How often he checks for teammates' changes:** `CONFIG.syncEverySec` in `app.js` (default 60 seconds).
 - **Write tags into image alt text:** set `CONFIG.writeAltText = true` in `app.js`. This fills empty alt text with Squeak's description; everyone on the board can see it.
 - **Rename him:** change the nameplate text in `app.html` (`<div class="nameplate frame" …>Squeak</div>`) and `appName` in the manifest.
@@ -145,6 +146,7 @@ Squeak tells you which kind of match he found: "Got one" when every word matched
   - `assets/squeak-portrait.png` holds 12 frames of 64×64 in a row. Frame order is eyes (open, closed, happy) × mouth (closed, o, open, grin), so frame index = `eyes × 4 + mouth`.
   - The background has one image per time of day: `atelier-morning.png`, `atelier-day.png`, `atelier-evening.png` and `atelier-night.png`.
   - `counter.png` is drawn in front of Squeak.
+  - `squeak-walk.png` holds his full-body frames for walking to the shelves and searching them, redrawn from reference sprite sheets at his portrait's pixel size and palette. Their positions are in `WALK_FRAMES` in `app.js`.
 
 ---
 
