@@ -1,0 +1,2 @@
+# miro-stardew-helper
+test
