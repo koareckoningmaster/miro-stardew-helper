@@ -1,5 +1,5 @@
 /**
- * Pip, the trim finder: a pixel-art shopkeeper for Miro boards full of fashion trims.
+ * Squeak, the trim finder: a pixel-art shopkeeper for Miro boards full of fashion trims.
  * He stands behind the counter of a Gothic fabric atelier in the side panel.
  *
  *   Greets  people as they arrive (online_users:update) and asks what they need.
@@ -17,12 +17,14 @@ import { TAGGER_VERSION, VISION_MODEL, describeTags, tagSearchText } from './tri
 const CONFIG = {
   searchTypes: ['image', 'sticky_note', 'text', 'card', 'app_card', 'shape'],
   maxFinds: 8,
+  // Storage names keep their original 'pip' prefix on purpose: renaming them would make Squeak
+  // forget catalogues, taught labels and home-board settings saved before the rename.
   metaKey: 'pipTrim', // where tags + the image fingerprint are stored on each image
-  writeAltText: false, // true = also fill empty image alt text with Pip's tags (visible to everyone)
+  writeAltText: false, // true = also fill empty image alt text with Squeak's tags (visible to everyone)
   semantic: {
     // A photo counts as a visual match only if the description fits it better than the
     // plain baseline "a trim" does (minLift) and clears an absolute floor. Raise these if
-    // Pip suggests trims that don't fit; lower them if he misses ones that do.
+    // Squeak suggests trims that don't fit; lower them if he misses ones that do.
     minLift: 0.015,
     floor: 0.18,
     weight: 22, // how much a confident visual match is worth versus a keyword match
@@ -51,7 +53,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
 // Miro always runs the panel inside an iframe. Opened on its own (e.g. http://localhost:3000/app.html)
-// Pip runs in preview mode: he greets and animates, but there's no board to search.
+// Squeak runs in preview mode: he greets and animates, but there's no board to search.
 const PREVIEW = window.self === window.top || !window.miro?.board;
 
 function firstName(name) {
@@ -93,7 +95,7 @@ async function mapLimit(list, limit, fn) {
 /* ═════════════════════════ DOM ═════════════════════════ */
 
 const scene = $('scene');
-const pipButton = $('pipButton');
+const squeakButton = $('squeakButton');
 const shopCanvas = $('shop');
 const emoteEl = $('emote');
 const dialogEl = $('dialog');
@@ -115,10 +117,10 @@ const findsList = $('findsList');
 const homeSwitch = $('homeSwitch');
 const homeToggle = $('homeToggle');
 
-/* ═════════════════════════ The atelier & Pip's animation ═════════════════════════
+/* ═════════════════════════ The atelier & Squeak's animation ═════════════════════════
    The scene is a 96×96 pixel canvas, scaled 3× by CSS with hard edges. Every frame is three
    layers: the Gothic atelier (one version per time of day, for the city view in the windows),
-   Pip's portrait (one of 12 frames: eyes × mouth), then the counter in front of him. */
+   Squeak's portrait (one of 12 frames: eyes × mouth), then the counter in front of him. */
 
 const ART = {
   'back-morning': 'assets/atelier-morning.png',
@@ -126,7 +128,7 @@ const ART = {
   'back-evening': 'assets/atelier-evening.png',
   'back-night': 'assets/atelier-night.png',
   front: 'assets/counter.png',
-  portrait: 'assets/pip-portrait.png', // 12 frames, 64×64 each: [open, closed, happy eyes] × [closed, o, open, grin mouth]
+  portrait: 'assets/squeak-portrait.png', // 12 frames, 64×64 each: [open, closed, happy eyes] × [closed, o, open, grin mouth]
 };
 const SCENE_SIZE = 96;
 const PORTRAIT = { x: 13, y: 18, size: 64 }; // head centered under the big arched window
@@ -149,7 +151,7 @@ function loadArt() {
           const img = new Image();
           img.onload = () => resolve((images[key] = img));
           img.onerror = () => {
-            console.warn(`[Pip] Missing art: ${src}`);
+            console.warn(`[Squeak] Missing art: ${src}`);
             resolve(null);
           };
           img.src = src;
@@ -158,7 +160,7 @@ function loadArt() {
   ).then(paint);
 }
 
-/** Draws one frame: room, Pip, (card behind counter), tossed trims, counter, (card in front), sparkles. */
+/** Draws one frame: room, Squeak, (card behind counter), tossed trims, counter, (card in front), sparkles. */
 function draw() {
   const ctx = shopCtx;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -198,7 +200,7 @@ function setPose(changes) {
   paint();
 }
 
-/* ═════════════════════════ Props: what Pip digs up, and the frame he holds up ═════════════════════════
+/* ═════════════════════════ Props: what Squeak digs up, and the frame he holds up ═════════════════════════
    His arms, the frame and the tossed trims are pixel grids drawn at the same pixel scale as his
    portrait. The arms are traced from the reference art (fists gripping the frame's sides, sleeves
    wrapping the forearms) and use his portrait's own skin and shirt colors. The photo inside the frame is
@@ -209,13 +211,13 @@ const PROP_PALETTE = {
   B: '#4f7dc0', b: '#2d4f86', W: '#f6efe0', l: '#cdbf9f', P: '#e98aa8', p: '#c45d82',
   G: '#f6dd8c', g: '#d9b04f', D: '#ece6da',
 };
-// Pip's own colors, sampled from his portrait, so the arms match his face and shirt exactly.
+// Squeak's own colors, sampled from his portrait, so the arms match his face and shirt exactly.
 const ARM_PALETTE = {
   S: '#fab786', s: '#f99a65', t: '#e88152', u: '#cc6049', R: '#a03c35', r: '#6c1f2f', // skin + maroon outline
-  L: '#434072', N: '#343358', n: '#2d2c4d', m: '#28273f', j: '#22213a', k: '#19181a', // navy shirt + outline
+  L: '#4d4d57', N: '#35353d', n: '#2d2d34', m: '#26262c', j: '#20202a', k: '#19181a', // black shirt + outline
 };
 // Traced from the reference art: fist gripping the frame (fingers wrapping over its front), wrist,
-// and the sleeve wrapping the forearm, scaled to Pip's pixel size and snapped to his palette.
+// and the sleeve wrapping the forearm, scaled to Squeak's pixel size and snapped to his palette.
 const ARM_L = [
   '.........rrrrrrrrr..',
   '........rRutsssstur.',
@@ -276,7 +278,7 @@ function pixelSprite(rows, palette = PROP_PALETTE) {
 }
 
 // The frame: square (trim photos are 1:1), dark brown with rounded corners and a lighter inner edge.
-const FRAME = { size: 36, border: 3, dx: 17, dy: 41 }; // dx/dy: offset from Pip's portrait
+const FRAME = { size: 36, border: 3, dx: 17, dy: 41 }; // dx/dy: offset from Squeak's portrait
 function frameSprite() {
   const n = FRAME.size;
   const canvas = document.createElement('canvas');
@@ -331,7 +333,7 @@ function hiDefPhoto(item) {
       full.close();
       return square;
     })().catch((err) => {
-      console.info(`[Pip] No high-definition copy for ${item.id}:`, err?.message || err);
+      console.info(`[Squeak] No high-definition copy for ${item.id}:`, err?.message || err);
       return null;
     });
     hiDefCache.set(item.id, job);
@@ -360,7 +362,7 @@ function hiDefUrl(item) {
   return hiDefUrls.get(item.id);
 }
 
-/** What Pip is holding: shows Miro's quick preview first, then swaps in the high-definition photo. */
+/** What Squeak is holding: shows Miro's quick preview first, then swaps in the high-definition photo. */
 function makeHeld(item) {
   const held = { itemId: item?.id ?? null, type: item?.type, photo: null, hiDef: false };
   let markReady;
@@ -713,7 +715,7 @@ async function say(text, { arrivals = [], reveal = null } = {}) {
   return true;
 }
 
-/** The trim Pip "holds up" in the dialogue box, like an RPG item reveal. */
+/** The trim Squeak "holds up" in the dialogue box, like an RPG item reveal. */
 function showReveal(item) {
   if (!item || item.type !== 'image') {
     revealEl.hidden = true;
@@ -808,7 +810,7 @@ function hideSign(afterMs = 0) {
   signHideTimer = setTimeout(() => (signEl.hidden = true), afterMs);
 }
 
-/* ═════════════════════════ Pip's eyes (vision worker) ═════════════════════════ */
+/* ═════════════════════════ Squeak's eyes (vision worker) ═════════════════════════ */
 
 function createVision() {
   const state = { textReady: false, visionReady: false, failed: false, loading: false, percent: 0 };
@@ -816,7 +818,7 @@ function createVision() {
   try {
     worker = new Worker(new URL('./vision-worker.js', import.meta.url), { type: 'module' });
   } catch (err) {
-    console.warn('[Pip] Image recognition unavailable:', err);
+    console.warn('[Squeak] Image recognition unavailable:', err);
     return { state: { ...state, failed: true } };
   }
 
@@ -847,7 +849,7 @@ function createVision() {
   };
 
   worker.onerror = (event) => {
-    console.warn('[Pip] Image recognition failed to start:', event.message || event);
+    console.warn('[Squeak] Image recognition failed to start:', event.message || event);
     state.failed = true;
     for (const job of pending.values()) job.reject(new Error('Vision worker crashed'));
     pending.clear();
@@ -876,7 +878,7 @@ const visionUsable = () => !vision.state.failed && typeof vision.embedText === '
 /* ═════════════════════════ Catalog: auto-tagging every trim photo ═════════════════════════
    Each image is looked at once per board. Its tags and a compact fingerprint (a 512-number
    vector squeezed into ~700 characters) are saved in the image's app metadata, so everyone
-   who opens Pip afterwards gets instant, recognition-powered search. */
+   who opens Squeak afterwards gets instant, recognition-powered search. */
 
 const index = new Map(); // image id -> { tags: string[], embedding: Float32Array }
 const catalog = { queue: [], running: false, paused: false, done: 0, total: 0, failed: 0, skipped: 0, analyzed: 0, relabel: [], relabelling: false, relabelled: 0 };
@@ -927,7 +929,7 @@ function writeMeta(entry) {
 }
 
 /* ═════════════════════════ Saving the catalogue ═════════════════════════
-   Pip saves what he learns in three places, so reloading never means cataloguing again:
+   Squeak saves what he learns in three places, so reloading never means cataloguing again:
    1. The board's own storage (a Miro "storage collection"), shared by everyone on the board.
       The whole catalogue loads in a few calls instead of one call per photo.
    2. Each photo's app metadata, which travels with the photo if the board is duplicated.
@@ -1045,7 +1047,7 @@ async function flushSaves() {
       save.storageFailures = 0;
     } catch (err) {
       save.lastError = err?.message || String(err);
-      console.warn('[Pip] Could not save to the board storage:', save.lastError);
+      console.warn('[Squeak] Could not save to the board storage:', save.lastError);
       if (++save.storageFailures >= 3) save.storageOk = false; // stop retrying this session
     }
   }
@@ -1064,7 +1066,7 @@ async function saveOnPhoto(image, entry) {
       save.lastError = err?.message || String(err);
     }
   }
-  console.info(`[Pip] Could not save tags on photo ${image.id}:`, save.lastError);
+  console.info(`[Squeak] Could not save tags on photo ${image.id}:`, save.lastError);
   if (++save.metaFailures >= 3) save.metaOk = false; // e.g. view-only access
 }
 
@@ -1091,7 +1093,7 @@ async function scanBoard() {
       miro.board.get({ type: 'frame' }).catch(() => []),
     ]);
   } catch (err) {
-    console.warn('[Pip] Could not list images:', err);
+    console.warn('[Squeak] Could not list images:', err);
     return;
   }
   rememberFrames(frames);
@@ -1128,7 +1130,7 @@ async function scanBoard() {
       catalog.queue.push(image);
     }
   });
-  console.info(`[Pip] ${catalog.done} of ${catalog.total} trims already catalogued; ${catalog.queue.length} new.`);
+  console.info(`[Squeak] ${catalog.done} of ${catalog.total} trims already catalogued; ${catalog.queue.length} new.`);
   if (catalog.queue.length) runCatalog();
   else if (catalog.relabel.length) runRelabel();
   else renderCatalogSign();
@@ -1153,7 +1155,7 @@ async function runRelabel() {
       persist(image, entry);
       catalog.relabelled++;
     } catch (err) {
-      console.warn(`[Pip] Couldn't relabel image ${image.id}:`, err?.message || err);
+      console.warn(`[Squeak] Couldn't relabel image ${image.id}:`, err?.message || err);
     }
     done++;
     setSign(`Updating trim labels: ${done} of ${total}`, done / total);
@@ -1166,7 +1168,7 @@ async function runRelabel() {
 
 /* ═════════════════════════ Reading photos (HEIC-safe) ═════════════════════════
    Miro keeps the original file that was uploaded. iPhone photos are often HEIC, which Chrome and
-   Edge can't open, so Pip converts those to JPEG first. If that fails too, he uses Miro's own
+   Edge can't open, so Squeak converts those to JPEG first. If that fails too, he uses Miro's own
    preview copy (smaller, but always a normal JPEG/PNG), so every photo gets catalogued. */
 
 const HEIC_CONVERTER = 'https://cdn.jsdelivr.net/npm/heic2any@0.0.4'; // MIT licensed; loaded only if a HEIC turns up
@@ -1211,14 +1213,14 @@ async function readableImage(image) {
       const jpeg = Array.isArray(converted) ? converted[0] : converted;
       if (jpeg && (await browserCanRead(jpeg))) return jpeg;
     } catch (err) {
-      console.info(`[Pip] Couldn't convert image ${image.id}, using Miro's preview instead:`, err?.message || err);
+      console.info(`[Squeak] Couldn't convert image ${image.id}, using Miro's preview instead:`, err?.message || err);
     }
   }
   return image.getFile('preview');
 }
 
 /* ═════════════════════════ Top layer only ═════════════════════════
-   Pip ignores any photo that has another photo sitting on top of it: backdrops behind frames,
+   Squeak ignores any photo that has another photo sitting on top of it: backdrops behind frames,
    older photos stacked under newer ones, and so on. A small label or sticky note on a photo
    doesn't count, because only photos are checked, and only when at least half of the upper
    photo overlaps the one beneath. */
@@ -1287,7 +1289,7 @@ async function topLayerIds(images, frames = []) {
     const bInFront = la !== undefined && lb !== undefined ? lb > la : boxes.get(b.id).area < boxes.get(a.id).area;
     if (bInFront) beneath.add(a.id);
   }
-  if (beneath.size) console.info(`[Pip] Skipping ${beneath.size} photo(s) that sit underneath other photos.`);
+  if (beneath.size) console.info(`[Squeak] Skipping ${beneath.size} photo(s) that sit underneath other photos.`);
   return new Set(images.filter((image) => !beneath.has(image.id)).map((image) => image.id));
 }
 
@@ -1297,10 +1299,10 @@ async function runCatalog() {
   try {
     await vision.warm(['vision']);
   } catch (err) {
-    console.warn('[Pip] Image recognition could not load:', err);
+    console.warn('[Squeak] Image recognition could not load:', err);
     vision.state.failed = true;
     catalog.running = false;
-    setSign("Image recognition couldn't load, so Pip is searching names, labels and frame titles only.");
+    setSign("Image recognition couldn't load, so Squeak is searching names, labels and frame titles only.");
     ambient(line('catalogFailed'));
     return;
   }
@@ -1320,7 +1322,7 @@ async function runCatalog() {
       }
     } catch (err) {
       catalog.failed++;
-      console.warn(`[Pip] Couldn't catalogue image ${image.id}:`, err);
+      console.warn(`[Squeak] Couldn't catalogue image ${image.id}:`, err);
     }
     catalog.done++;
     renderCatalogSign();
@@ -1380,7 +1382,7 @@ function fieldsOf(item) {
       const entry = index.get(item.id);
       const tags = entry?.tags || [];
       return [
-        { key: 'label', text: entry?.label || '', weight: 1.8 }, // what a person told Pip it is
+        { key: 'label', text: entry?.label || '', weight: 1.8 }, // what a person told Squeak it is
         { key: 'title', text: item.title || '', weight: 1.4 },
         { key: 'alt', text: item.alt || '', weight: 1.2 },
         { key: 'tags', text: tagSearchText(tags), weight: 1.3 },
@@ -1502,7 +1504,7 @@ function snippet(text, query, max = 60) {
   return (start > 0 ? '…' : '') + text.slice(start, end).trim() + (end < text.length ? '…' : '');
 }
 
-/** How Pip names a find out loud: "a white lace trim called "Bridal edge"". */
+/** How Squeak names a find out loud: "a white lace trim called "Bridal edge"". */
 /** "gold O-ring" -> "a gold O-ring"; leaves "the…", "some…" and plurals alone. */
 function withArticle(text) {
   const t = text.trim();
@@ -1639,13 +1641,13 @@ function canInterrupt() {
 }
 
 let greeted = false;
-/** Small talk about Pip's own work (cataloguing), only when nobody is mid-conversation. */
+/** Small talk about Squeak's own work (cataloguing), only when nobody is mid-conversation. */
 function ambient(text) {
   if (greeted && canInterrupt() && askForm.hidden && choicesEl.hidden) say(text).then(showHint);
 }
 
 /* ═════════════════════════ Fixing a label ═════════════════════════
-   When Pip gets a photo wrong, you tell him what it really is. He saves it with the photo (in the
+   When Squeak gets a photo wrong, you tell him what it really is. He saves it with the photo (in the
    board's storage and on the photo itself), uses it for searching, and says it from then on. */
 
 let labelling = null; // the find being relabelled, while the search box is asking "what is it?"
@@ -1690,7 +1692,7 @@ async function saveLabel(raw) {
   showHint();
 }
 
-function onPipClick() {
+function onSqueakClick() {
   if (labelling) stopLabelling();
   if (pose.card) body.putAway();
   else if (body.digging || pose.lift > 10) body.riseEmpty();
@@ -1757,7 +1759,7 @@ async function runSearch(raw) {
     const top = await topLayerIds(items.filter((item) => item.type === 'image'), frames);
     items = items.filter((item) => item.type !== 'image' || top.has(item.id));
   } catch (err) {
-    console.error('[Pip] Search failed:', err);
+    console.error('[Squeak] Search failed:', err);
     finishSearching();
     body.riseEmpty();
     if (flow === flowId) await say(line('boardError'));
@@ -1767,7 +1769,7 @@ async function runSearch(raw) {
 
   let ranked = rankItems(items, query, queryVec, queryVec && (await baselineVector()));
 
-  // Nothing by name? If Pip's eyes are still loading, wait for them and look again.
+  // Nothing by name? If Squeak's eyes are still loading, wait for them and look again.
   if (!ranked.length && !queryVec && visionUsable() && index.size) {
     await say(line('glasses'));
     queryVec = await queryVector(query, 120000);
@@ -1800,8 +1802,8 @@ function finishSearching() {
 async function offer(finds, total, flow) {
   let i = 0;
   let wrapped = false;
-  // "Sure" = the words or tags matched; otherwise Pip is going by how the photos look.
-  // How Pip phrases it: every word matched, some words matched, or going by how the photos look.
+  // "Sure" = the words or tags matched; otherwise Squeak is going by how the photos look.
+  // How Squeak phrases it: every word matched, some words matched, or going by how the photos look.
   const confidence = !finds[0].keyword ? 'guess' : finds[0].coverage === 1 ? 'sure' : 'partial';
   body.mood('happy');
   popEmote('!');
@@ -1864,7 +1866,7 @@ async function travelTo(find, flow) {
   try {
     await miro.board.viewport.zoomTo(find.item);
   } catch (err) {
-    console.warn('[Pip] zoomTo failed:', err);
+    console.warn('[Squeak] zoomTo failed:', err);
     body.mood('neutral');
     body.putAway();
     if (flow === flowId) await say(line('missing'));
@@ -1874,7 +1876,7 @@ async function travelTo(find, flow) {
     await miro.board.deselect();
     await miro.board.select({ id: find.item.id });
   } catch (err) {
-    console.warn('[Pip] select failed:', err);
+    console.warn('[Squeak] select failed:', err);
   }
   if (flow !== flowId) return;
   body.mood('happy');
@@ -1932,7 +1934,7 @@ function onOnlineUsersUpdate({ users = [] }) {
 
 /* ═════════════════════════ Home board switch ═════════════════════════
    Each board stores its own setting (Miro "app data", visible only to this app). index.html reads it:
-   Pip pops up for everyone only on boards where it's on, and stays out of the way everywhere else. */
+   Squeak pops up for everyone only on boards where it's on, and stays out of the way everywhere else. */
 
 const HOME_KEY = 'pipHome';
 
@@ -1940,7 +1942,7 @@ async function setupHomeSwitch() {
   try {
     homeToggle.checked = (await miro.board.getAppData(HOME_KEY)) === true;
   } catch (err) {
-    console.warn('[Pip] Board settings unavailable:', err);
+    console.warn('[Squeak] Board settings unavailable:', err);
     return; // leave the switch hidden
   }
   homeSwitch.hidden = false;
@@ -1957,7 +1959,7 @@ async function setupHomeSwitch() {
       endFlow(flow);
     } catch (err) {
       homeToggle.checked = !on;
-      console.warn('[Pip] Could not save the board setting:', err);
+      console.warn('[Squeak] Could not save the board setting:', err);
       say(line('homeError')).then(showHint);
     } finally {
       homeSwitch.classList.remove('is-saving');
@@ -1973,7 +1975,7 @@ async function boot() {
   await loadArt();
   body.liveForever();
 
-  pipButton.addEventListener('click', onPipClick);
+  squeakButton.addEventListener('click', onSqueakClick);
   dialogEl.addEventListener('click', (event) => {
     if (!event.target.closest('button, input')) skipTyping = true;
   });
@@ -1989,7 +1991,7 @@ async function boot() {
     say(line('greet')).then(() => {
       greeted = true;
       body.mood('neutral');
-      hintEl.textContent = 'Preview mode: click Pip to try him out. Open him inside Miro to search a real board.';
+      hintEl.textContent = 'Preview mode: click Squeak to try him out. Open him inside Miro to search a real board.';
       showHint();
     });
     return;
@@ -2005,7 +2007,7 @@ async function boot() {
   me = user;
   knownUserIds ??= new Set(online.map((u) => u.id));
 
-  // Greeting: wave, then ask what they need. Clicking Pip opens the search box.
+  // Greeting: wave, then ask what they need. Clicking Squeak opens the search box.
   body.mood('happy');
   body.nod(3);
   const greeting =

@@ -1,14 +1,14 @@
 /**
- * Pip's vocabulary: everything he can recognize in a photo, shared by the panel (app.js) and the
+ * Squeak's vocabulary: everything he can recognize in a photo, shared by the panel (app.js) and the
  * image-recognition worker.
  *
  * - `prompt` is what the vision model compares each photo against.
  * - `words` are the synonyms people might type, so "zigzag" finds rickrack and "o-ring" finds rings.
- * - `phrase` is how Pip says it out loud ("an orange trapezoid bead").
- * - `group` lets Pip fall back to a broader word ("bead") when he isn't sure of the exact type.
+ * - `phrase` is how Squeak says it out loud ("an orange trapezoid bead").
+ * - `group` lets Squeak fall back to a broader word ("bead") when he isn't sure of the exact type.
  *
  * Add, remove or rename entries freely. If you change the vocabulary, bump TAGGER_VERSION:
- * Pip relabels every photo from its saved fingerprint (quick) the next time he opens.
+ * Squeak relabels every photo from its saved fingerprint (quick) the next time he opens.
  */
 
 export const VISION_MODEL = {
@@ -19,7 +19,7 @@ export const VISION_MODEL = {
 
 export const TAGGER_VERSION = 2; // bump when the vocabulary or labelling rules change
 
-// How sure Pip must be before using a specific word. Below these, he uses the broader word
+// How sure Squeak must be before using a specific word. Below these, he uses the broader word
 // ("bead" instead of "trapezoid bead"). Raise them for fewer but safer labels.
 export const TAGGING = {
   typeConfidence: 0.25, // to name the exact type ("D-ring" rather than "metal hardware")
@@ -114,7 +114,7 @@ export const ITEM_TYPES = [
   { key: 'loose-rhinestones', group: 'embellishment', prompt: 'loose rhinestones and crystals', phrase: 'loose rhinestones', mass: true, words: ['rhinestones', 'crystals', 'gems', 'stones'] },
 ];
 
-// Shapes Pip names for small objects (beads, buttons, charms).
+// Shapes Squeak names for small objects (beads, buttons, charms).
 export const SHAPE_GROUPS = ['bead', 'button', 'embellishment'];
 export const SHAPES = [
   { key: 'round', words: ['round', 'circle', 'circular', 'ball'] },
@@ -220,7 +220,7 @@ export function tagSearchText(tags = []) {
     .join(' ');
 }
 
-/** How Pip says it: "an orange trapezoid bead", "a gold metal ring", "a white lace trim". */
+/** How Squeak says it: "an orange trapezoid bead", "a gold metal ring", "a white lace trim". */
 export function describeTags(tags = [], { article = true } = {}) {
   const color = tags.map((t) => COLOR_BY_KEY.get(t)).find(Boolean);
   const shape = tags.map((t) => SHAPE_BY_KEY.get(t)).find(Boolean);

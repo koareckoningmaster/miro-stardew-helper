@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Pip, the atelier's trim finder</title>
+    <title>Squeak, the atelier's trim finder</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -115,7 +115,7 @@
       }
 
       /* ---------- Atelier scene ----------
-         A 96×96 pixel canvas (atelier backdrop, Pip's animated portrait, counter) drawn
+         A 96×96 pixel canvas (atelier backdrop, Squeak's animated portrait, counter) drawn
          at 3× with hard pixel edges. */
       .scene {
         --fill-hi: rgba(255, 255, 255, 0.18);
@@ -133,8 +133,8 @@
         image-rendering: crisp-edges;
       }
 
-      /* Invisible hit area over Pip himself: click him to search */
-      .pip {
+      /* Invisible hit area over Squeak himself: click him to search */
+      .squeak {
         position: absolute;
         left: 16.5%;
         top: 22%;
@@ -145,7 +145,7 @@
         background: none;
         cursor: pointer;
       }
-      .pip:focus-visible {
+      .squeak:focus-visible {
         outline: 2px dashed #fff4d2;
         outline-offset: 2px;
       }
@@ -230,7 +230,7 @@
         color: var(--text-soft);
       }
 
-      /* The trim Pip "holds up" when he finds it */
+      /* The trim Squeak "holds up" when he finds it */
       .reveal {
         --u: 3px;
         --fill: #fffdf8;
@@ -490,19 +490,19 @@
   <body>
     <main class="app">
       <section class="scene frame" id="scene" data-time="day">
-        <!-- Pip's atelier: backdrop + animated portrait + counter, painted by app.js -->
+        <!-- Squeak's atelier: backdrop + animated portrait + counter, painted by app.js -->
         <canvas class="shop" id="shop" width="96" height="96" aria-hidden="true"></canvas>
-        <button class="pip" id="pipButton" type="button" aria-label="Talk to Pip to search for a trim"></button>
+        <button class="squeak" id="squeakButton" type="button" aria-label="Talk to Squeak to search for a trim"></button>
         <span class="emote" id="emote" aria-hidden="true">!</span>
       </section>
 
-      <div class="nameplate frame" aria-hidden="true">Pip</div>
+      <div class="nameplate frame" aria-hidden="true">Squeak</div>
 
-      <section class="dialog frame" id="dialog" aria-label="Pip says">
+      <section class="dialog frame" id="dialog" aria-label="Squeak says">
         <p class="dialog__arrival" id="arrival" hidden></p>
         <div class="dialog__body">
           <figure class="reveal frame" id="reveal" hidden>
-            <img id="revealImg" alt="The trim Pip found" />
+            <img id="revealImg" alt="The trim Squeak found" />
           </figure>
           <!-- Typewriter text is visual only; screen readers get the full line from #live. -->
           <p class="dialog__text" id="dialogText" aria-hidden="true"></p>
@@ -525,15 +525,15 @@
           <button class="ask__go" type="submit">Find</button>
         </form>
 
-        <p class="dialog__hint" id="hint" hidden>Click Pip to search the board.</p>
+        <p class="dialog__hint" id="hint" hidden>Click Squeak to search the board.</p>
       </section>
 
-      <!-- Per-board setting, shared by everyone on the board: Pip pops up only where this is on -->
+      <!-- Per-board setting, shared by everyone on the board: Squeak pops up only where this is on -->
       <label class="home-switch" id="homeSwitch" hidden>
         <input type="checkbox" id="homeToggle" aria-describedby="homeNote" />
         <span class="home-switch__box" aria-hidden="true"></span>
         <span class="home-switch__text">
-          <span>Show Pip to everyone who opens this board</span>
+          <span>Show Squeak to everyone who opens this board</span>
           <span class="home-switch__note" id="homeNote">Anyone who can edit this board can turn this on or off.</span>
         </span>
       </label>

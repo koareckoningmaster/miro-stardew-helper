@@ -1,11 +1,11 @@
 /**
- * Pip's eyes: image recognition that runs entirely in the browser.
+ * Squeak's eyes: image recognition that runs entirely in the browser.
  *
  * Uses Marqo FashionCLIP (a CLIP model fine-tuned on fashion products) through
  * Transformers.js. It turns trim photos and search text into vectors in the same
  * space, so "gold scalloped lace" lands near photos of gold scalloped lace.
  *
- * Runs in a Web Worker so Pip's animations stay smooth while it thinks.
+ * Runs in a Web Worker so Squeak's animations stay smooth while it thinks.
  *
  * Messages in:  { id, type: 'warm', parts: ['text'|'vision'] }
  *               { id, type: 'embedText', text }

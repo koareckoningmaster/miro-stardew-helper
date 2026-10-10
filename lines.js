@@ -1,9 +1,9 @@
 /**
- * Everything Pip can say. He isn't a chatbot: every line is about greeting people,
+ * Everything Squeak can say. He isn't a chatbot: every line is about greeting people,
  * finding trims, or showing them where a trim is.
  *
  * Placeholders: {name} {names} {query} {thing} {count} {kind} {left}
- * Pip picks a random line from each list and avoids repeating the last one he used.
+ * Squeak picks a random line from each list and avoids repeating the last one he used.
  */
 export const LINES = {
   // First thing a newcomer sees. Every greeting ends with the same question.
@@ -24,7 +24,7 @@ export const LINES = {
     'Hello again! What can I help you find today?',
     'Need another trim? What can I help you find today?',
   ],
-  // Someone else joined while this person had Pip open.
+  // Someone else joined while this person had Squeak open.
   arrival: [
     'Oh! {name} just walked in. Hello, {name}! What can I help you find today?',
     'A customer! Welcome, {name}. What can I help you find today?',
@@ -36,7 +36,7 @@ export const LINES = {
     'Hello, {names}! What can I help you find today?',
   ],
 
-  // After clicking Pip.
+  // After clicking Squeak.
   prompt: [
     'What trim are we hunting for? Describe it, or give me a word.',
     'Tell me what it looks like, like "gold scalloped lace" or "red pom-poms".',
@@ -44,7 +44,7 @@ export const LINES = {
     'Describe the trim and I\'ll go dig it up.',
     'Which trim do you need? I\'ll check every swatch.',
   ],
-  // Clicking Pip again while the search box is already open.
+  // Clicking Squeak again while the search box is already open.
   poke: [
     'I\'m all ears! Type a trim and press Enter.',
     'Hehe, that tickles. What are we looking for?',
@@ -62,7 +62,7 @@ export const LINES = {
     'Hmm, "{query}"… one moment.',
     'Checking every spool for "{query}"…',
   ],
-  // The model downloads once; Pip says this while it loads.
+  // The model downloads once; Squeak says this while it loads.
   glasses: [
     'Let me get my magnifying glass. It takes a little while the first time…',
     'One moment, I\'m putting on my reading glasses for this one…',
@@ -143,7 +143,7 @@ export const LINES = {
     'This is just a preview, so my shelves are empty. Open me in Miro to search for "{query}".',
   ],
 
-  // The "Show Pip to everyone who opens this board" switch (one setting shared by the whole board).
+  // The "Show Squeak to everyone who opens this board" switch (one setting shared by the whole board).
   homeOn: [
     'This is my shop now! I\'ll pop up for everyone who opens this board.',
     'Moving in! From now on I\'ll greet everyone who opens this board.',
