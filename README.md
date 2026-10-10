@@ -6,7 +6,7 @@ A 16-bit shopkeeper who lives in your Miro board's side panel. Pip greets everyo
 
 ## What Pip does
 
-- **Greets people as they arrive.** When someone opens the board, Pip's panel opens and he says hello by name, then asks what he can help them find today.
+- **Greets people as they arrive.** On the board you choose as his home, Pip's panel opens for everyone who comes in, and he says hello by name, then asks what he can help them find today. On other boards he stays out of the way until someone clicks his icon.
 - **Listens when you click him.** A search box opens inside his dialogue box. Type a word or a loose description.
 - **Actually looks at your trims.** Pip uses in-browser image recognition (a fashion-trained CLIP model) to tag every trim photo on the board by color and type, such as *lace, rickrack, pom-pom, sequin, velvet ribbon* and 25 more. He saves those tags on the board, so it only happens once per image and every visitor benefits.
 - **Finds and shows.** He holds up the best match, asks if you'd like a closer look, and zooms the board to it. You can flip through other matches or click any result directly.
@@ -21,8 +21,8 @@ A 16-bit shopkeeper who lives in your Miro board's side panel. Pip greets everyo
 If someone already hosts Pip, they'll give you an installation link:
 
 1. Open the link, choose the Miro team you want Pip in, and approve the permissions.
-2. Open any board in that team. Pip opens and greets you.
-3. Later, open him from the **cap icon** in the apps toolbar on the left. It may be tucked under **More apps**.
+2. Open the board where your trims live. In the toolbar on the left, click **+**, search `trim`, and click **Trim Finder**.
+3. In Pip's panel, tick **Greet everyone who opens this board**. From now on, he pops up by himself on that board for everyone. You can do this on as many boards as you like.
 
 <!-- Maintainers: after setup, replace the line below with your Miro installation URL. -->
 **Install link:** *add your Miro installation URL here*
@@ -116,7 +116,10 @@ python3 -m http.server 3000      # Windows: py -m http.server 3000
 - **What he says:** edit `lines.js`. Placeholders such as `{name}`, `{query}` and `{thing}` are filled in automatically.
 - **Trim types, colors and synonyms:** edit `trims.js`. If you change the `prompt` text Pip uses to tag photos, bump `VISION_MODEL.tag` so existing photos get re-tagged.
 - **Matching sensitivity:** in `app.js`, `CONFIG.semantic.minLift` and `floor` control how confident a visual match must be. Raise them if Pip suggests trims that don't fit; lower them if he misses ones that do.
-- **Don't pop open on arrival:** set `AUTO_OPEN_ON_ARRIVAL = false` in `index.html`. People then open Pip from the toolbar icon.
+- **Where he pops up by himself:** tick **Greet everyone who opens this board** in Pip's panel on each board you want. To change the overall behavior, edit `AUTO_OPEN` in `index.html`:
+  - `'home'` (the default): only on ticked boards.
+  - `'all'`: every board.
+  - `'none'`: only when someone clicks his icon.
 - **Write tags into image alt text:** set `CONFIG.writeAltText = true` in `app.js`. This fills empty alt text with Pip's description; everyone on the board can see it.
 - **Rename him:** change the nameplate text in `app.html` (`<div class="nameplate frame" …>Pip</div>`) and `appName` in the manifest.
 - **Colors:** the palette tokens at the top of `app.html` (black lacquer, gold and marble cream by default).

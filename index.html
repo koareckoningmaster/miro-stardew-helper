@@ -8,8 +8,20 @@
   </head>
   <body>
     <script>
-      // Pop Pip open for each person when they arrive on the board (once per browser tab).
-      const AUTO_OPEN_ON_ARRIVAL = true;
+      // Where Pip pops up on his own when someone opens a board (once per browser tab):
+      //   'home' = only on boards where someone ticked "Greet everyone who opens this board" in his panel
+      //   'all'  = on every board in a team that installed him
+      //   'none' = never; people open him from the cap icon in the apps toolbar
+      const AUTO_OPEN = 'home';
+      const HOME_KEY = 'pipHome'; // the board-level setting saved by the switch in Pip's panel
+
+      async function isHomeBoard() {
+        try {
+          return (await miro.board.getAppData(HOME_KEY)) === true;
+        } catch {
+          return false;
+        }
+      }
 
       async function openPip(reason) {
         try {
@@ -32,7 +44,8 @@
       });
 
       async function greetOnArrival() {
-        if (!AUTO_OPEN_ON_ARRIVAL) return;
+        if (AUTO_OPEN === 'none') return;
+        if (AUTO_OPEN === 'home' && !(await isHomeBoard())) return; // not his home board: stay out of the way
         let key = 'pip-greeted';
         try {
           key += `:${(await miro.board.getInfo()).id}`;

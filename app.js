@@ -112,6 +112,8 @@ const signFill = $('signFill');
 const findsEl = $('finds');
 const findsTitle = $('findsTitle');
 const findsList = $('findsList');
+const homeSwitch = $('homeSwitch');
+const homeToggle = $('homeToggle');
 
 /* ═════════════════════════ The atelier & Pip's animation ═════════════════════════
    The scene is a 96×96 pixel canvas, scaled 3× by CSS with hard edges. Every frame is three
@@ -1087,6 +1089,41 @@ function onOnlineUsersUpdate({ users = [] }) {
   else queuedArrivals.push(...names);
 }
 
+/* ═════════════════════════ Home board switch ═════════════════════════
+   Each board stores its own setting (Miro "app data", visible only to this app). index.html reads it:
+   Pip pops up for everyone only on boards where it's on, and stays out of the way everywhere else. */
+
+const HOME_KEY = 'pipHome';
+
+async function setupHomeSwitch() {
+  try {
+    homeToggle.checked = (await miro.board.getAppData(HOME_KEY)) === true;
+  } catch (err) {
+    console.warn('[Pip] Board settings unavailable:', err);
+    return; // leave the switch hidden
+  }
+  homeSwitch.hidden = false;
+  homeToggle.addEventListener('change', async () => {
+    const on = homeToggle.checked;
+    homeSwitch.classList.add('is-saving');
+    try {
+      await miro.board.setAppData(HOME_KEY, on);
+      const flow = startFlow();
+      hideAsk();
+      body.mood(on ? 'happy' : 'neutral');
+      if (on) body.nod(2);
+      await say(line(on ? 'homeOn' : 'homeOff'));
+      endFlow(flow);
+    } catch (err) {
+      homeToggle.checked = !on;
+      console.warn('[Pip] Could not save the board setting:', err);
+      say(line('homeError')).then(showHint);
+    } finally {
+      homeSwitch.classList.remove('is-saving');
+    }
+  });
+}
+
 /* ═════════════════════════ Boot ═════════════════════════ */
 
 async function boot() {
@@ -1135,6 +1172,7 @@ async function boot() {
     showHint();
   });
 
+  setupHomeSwitch();
   miro.board.ui.on('online_users:update', onOnlineUsersUpdate);
   miro.board.ui.on('items:create', onItemsCreated);
   miro.board.ui.on('items:delete', onItemsDeleted);

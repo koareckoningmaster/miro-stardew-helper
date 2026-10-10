@@ -134,6 +134,19 @@ export const LINES = {
     'This is just a preview, so my shelves are empty. Open me in Miro to search for "{query}".',
   ],
 
+  // The "Greet everyone who opens this board" switch.
+  homeOn: [
+    'This is my shop now! I\'ll greet everyone who opens this board.',
+    'Moving in! From now on I\'ll say hello to everyone who opens this board.',
+  ],
+  homeOff: [
+    'Got it. On this board I\'ll wait behind the counter until someone clicks my icon.',
+    'Okay! I\'ll stay out of the way here unless someone calls for me.',
+  ],
+  homeError: [
+    'I couldn\'t save that setting. You may need edit access to this board.',
+  ],
+
   catalogDone: [
     'All done! I\'ve looked at all {count} trim photos, so you can search by description now.',
     'Finished cataloguing {count} trims! Describe one and I\'ll find it.',
