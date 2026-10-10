@@ -167,6 +167,16 @@ export const LINES = {
     'Noted: {label}. Thanks for teaching me!',
   ],
 
+  // A new photo appeared (added by this person while Squeak is open).
+  newTrims: [
+    'Ooh, something new on the board! Let me catalogue it.',
+    'New trims! I\'ll add them to my catalogue.',
+  ],
+
+  catalogSmall: [
+    'Got it! That one\'s in my catalogue now.',
+    'All set, the new trim is catalogued.',
+  ],
   catalogDone: [
     'All done! I\'ve looked at all {count} trim photos, so you can search by description now.',
     'Finished cataloguing {count} trims! Describe one and I\'ll find it.',

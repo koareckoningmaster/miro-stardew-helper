@@ -16,6 +16,7 @@ A 16-bit shopkeeper who lives in your Miro board's side panel. Squeak greets eve
 
   He names shapes for beads, buttons and charms, and measures colors from the photo's actual pixels. When he isn't sure of the exact type, he says the broader family ("bead", "metal hardware") instead of guessing. He saves what he learns on the board itself, so each photo is only ever looked at once, and every visitor's Squeak is ready instantly on reload. iPhone **HEIC** photos work too: Squeak converts them in the browser.
 - **Only looks at the top layer.** Photos that have another photo sitting on top of them, like backdrops behind your frames or old photos stacked under new ones, are ignored. The name of the frame a photo sits on is searchable too, so a photo on a frame called "Bridal Lace" turns up for "bridal".
+- **Keeps up with the board.** New photos get catalogued, whether you add them or a teammate does (he checks the board about once a minute and on every search). Deleted photos are forgotten, saved catalogue included. Copied or duplicated photos bring their tags along, so they don't need cataloguing again.
 - **Learns from you.** If he labels something wrong, choose **Fix this label** and tell him what it really is. He saves it with the photo, searches by it, and uses it from then on.
 - **Finds and shows.** He holds up the best match, asks if you'd like a closer look, and zooms the board to it. You can flip through other matches or click any result directly.
 - **Has some life to him.** He blinks, breathes and talks. When you search, he ducks behind his counter and rummages, tossing spools, buttons and ribbon over the edge, then comes back up gripping a square frame that shows the trim he found as a sharp, full-resolution photo. Ask for the next one and he puts it back under the desk and pulls up another. The city outside the atelier windows follows the time of day.
@@ -136,6 +137,7 @@ Squeak tells you which kind of match he found: "Got one" when every word matched
   - `'home'` (the default): only on ticked boards.
   - `'all'`: every board.
   - `'none'`: only when someone clicks his icon.
+- **How often he checks for teammates' changes:** `CONFIG.syncEverySec` in `app.js` (default 60 seconds).
 - **Write tags into image alt text:** set `CONFIG.writeAltText = true` in `app.js`. This fills empty alt text with Squeak's description; everyone on the board can see it.
 - **Rename him:** change the nameplate text in `app.html` (`<div class="nameplate frame" …>Squeak</div>`) and `appName` in the manifest.
 - **Colors:** the palette tokens at the top of `app.html` (black lacquer, gold and marble cream by default).

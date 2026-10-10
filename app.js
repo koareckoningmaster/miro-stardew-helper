@@ -21,6 +21,7 @@ const CONFIG = {
   // forget catalogues, taught labels and home-board settings saved before the rename.
   metaKey: 'pipTrim', // where tags + the image fingerprint are stored on each image
   writeAltText: false, // true = also fill empty image alt text with Squeak's tags (visible to everyone)
+  syncEverySec: 60, // how often to check the board for photos teammates added or removed
   semantic: {
     // A photo counts as a visual match only if the description fits it better than the
     // plain baseline "a trim" does (minLift) and clears an absolute floor. Raise these if
@@ -938,7 +939,7 @@ function writeMeta(entry) {
 const STORE = { collection: 'pip-catalog', chunks: 32, flushMs: 2000 };
 let boardId = 'unknown';
 const savedCatalog = new Map(); // photo id -> { t: tags, e: fingerprint, s: scale }
-const save = { dirty: new Set(), timer: null, storageFailures: 0, storageOk: true, metaFailures: 0, metaOk: true, lastError: '' };
+const save = { dirty: new Set(), removed: new Set(), timer: null, storageFailures: 0, storageOk: true, metaFailures: 0, metaOk: true, lastError: '' };
 
 const packEntry = (entry) => ({
   t: entry.tags,
@@ -1036,6 +1037,7 @@ async function flushSaves() {
   const dirty = [...save.dirty];
   save.dirty.clear();
   if (!coll || !save.storageOk) return;
+  const removedNow = new Set(save.removed);
   for (const i of dirty) {
     const key = `chunk-${i}`;
     try {
@@ -1043,8 +1045,10 @@ async function flushSaves() {
       const current = await coll.get(key);
       const items = current?.m === tag && current.items ? current.items : {};
       for (const [id, packed] of savedCatalog) if (chunkOf(id) === i) items[id] = packed;
+      for (const id of save.removed) if (chunkOf(id) === i) delete items[id]; // photos deleted from the board
       await coll.set(key, { m: tag, items });
       save.storageFailures = 0;
+      for (const id of removedNow) if (chunkOf(id) === i) save.removed.delete(id);
     } catch (err) {
       save.lastError = err?.message || String(err);
       console.warn('[Squeak] Could not save to the board storage:', save.lastError);
@@ -1097,6 +1101,7 @@ async function scanBoard() {
     return;
   }
   rememberFrames(frames);
+  for (const image of images) known.add(image.id);
   const top = await topLayerIds(images, frames);
   const onTop = images.filter((image) => top.has(image.id));
   catalog.skipped = images.length - onTop.length;
@@ -1130,6 +1135,7 @@ async function scanBoard() {
       catalog.queue.push(image);
     }
   });
+  forgetMissing(new Set(images.map((image) => image.id)));
   console.info(`[Squeak] ${catalog.done} of ${catalog.total} trims already catalogued; ${catalog.queue.length} new.`);
   if (catalog.queue.length) runCatalog();
   else if (catalog.relabel.length) runRelabel();
@@ -1296,6 +1302,7 @@ async function topLayerIds(images, frames = []) {
 async function runCatalog() {
   if (catalog.running || !catalog.queue.length || !visionUsable()) return;
   catalog.running = true;
+  const analyzedBefore = catalog.analyzed;
   try {
     await vision.warm(['vision']);
   } catch (err) {
@@ -1331,19 +1338,91 @@ async function runCatalog() {
   await flushSaves(); // save the last batch right away
   renderCatalogSign();
   if (catalog.relabel.length) setTimeout(runRelabel, 3000);
-  if (index.size) ambient(line('catalogDone', { count: index.size }));
+  const thisRun = catalog.analyzed - analyzedBefore;
+  if (thisRun && thisRun <= 3) ambient(line('catalogSmall'));
+  else if (index.size) ambient(line('catalogDone', { count: index.size }));
+}
+
+/* ═════════════════════════ Keeping up with the board ═════════════════════════
+   Miro only tells an app about photos its own user adds or deletes. So Squeak also checks the
+   board about once a minute and whenever someone searches, to pick up teammates' changes:
+   new photos get catalogued, deleted ones are forgotten (in his saved catalogue too). */
+
+const known = new Set(); // every photo id Squeak has seen on this board this session
+
+/** Catalogue photos Squeak hasn't seen before. Copies and duplicates already carry their tags. */
+async function addImages(images, { announce = false } = {}) {
+  const fresh = images.filter((image) => image.type === 'image' && !known.has(image.id));
+  if (!fresh.length) return 0;
+  for (const image of fresh) known.add(image.id);
+  let toLookAt = 0;
+  await mapLimit(fresh, 4, async (image) => {
+    const carried = readMeta(await image.getMetadata(CONFIG.metaKey).catch(() => undefined));
+    if (carried?.embedding) {
+      index.set(image.id, carried);
+      persist(image, carried, { onPhoto: false });
+      if (carried.tv !== TAGGER_VERSION) catalog.relabel.push(image);
+    } else {
+      catalog.queue.push(image);
+      catalog.total++;
+      toLookAt++;
+    }
+  });
+  console.info(`[Squeak] ${fresh.length} new photo(s) on the board; ${toLookAt} to catalogue.`);
+  if (announce && toLookAt) ambient(line('newTrims'));
+  if (catalog.queue.length) runCatalog();
+  else if (catalog.relabel.length) runRelabel();
+  return fresh.length;
+}
+
+/** Forget specific photos everywhere: the live catalogue, the to-do list and the saved catalogue. */
+function forgetIds(ids) {
+  let removed = 0;
+  for (const id of ids) {
+    const wasKnown = index.delete(id) | known.delete(id);
+    if (savedCatalog.delete(id)) {
+      save.removed.add(id);
+      save.dirty.add(chunkOf(id));
+      removed++;
+    } else if (wasKnown) {
+      removed++;
+    }
+  }
+  catalog.queue = catalog.queue.filter((image) => !ids.has(image.id));
+  catalog.relabel = catalog.relabel.filter((image) => !ids.has(image.id));
+  if (removed) {
+    console.info(`[Squeak] Forgot ${removed} photo(s) that were removed from the board.`);
+    clearTimeout(save.timer);
+    save.timer = setTimeout(flushSaves, STORE.flushMs);
+  }
+  return removed;
+}
+
+/** Forget every photo Squeak knows about that is no longer on the board. */
+function forgetMissing(boardIds) {
+  const gone = new Set([...index.keys(), ...savedCatalog.keys(), ...known].filter((id) => !boardIds.has(id)));
+  return gone.size ? forgetIds(gone) : 0;
+}
+
+/** Compare Squeak's catalogue with the board (pass the board's photos if you already have them). */
+async function syncWithBoard(images) {
+  if (!images) {
+    try {
+      images = await miro.board.get({ type: 'image' });
+    } catch {
+      return;
+    }
+  }
+  forgetMissing(new Set(images.map((image) => image.id)));
+  await addImages(images);
 }
 
 function onItemsCreated({ items = [] }) {
-  const fresh = items.filter((item) => item.type === 'image' && !index.has(item.id));
-  if (!fresh.length) return;
-  catalog.queue.push(...fresh);
-  catalog.total += fresh.length;
-  runCatalog();
+  addImages(items, { announce: true });
 }
 
 function onItemsDeleted({ items = [] }) {
-  for (const item of items) index.delete(item.id);
+  forgetIds(new Set(items.map((item) => item.id)));
 }
 
 /* ═════════════════════════ Matching ═════════════════════════ */
@@ -1755,6 +1834,7 @@ async function runSearch(raw) {
       sleep(reduceMotion ? 0 : 2000), // give the rummaging time to read, even on small boards
     ]);
     rememberFrames(frames);
+    syncWithBoard(items.filter((item) => item.type === 'image')); // pick up teammates' changes
     // Only photos on the top layer count; everything else on the board is searched as usual.
     const top = await topLayerIds(items.filter((item) => item.type === 'image'), frames);
     items = items.filter((item) => item.type !== 'image' || top.has(item.id));
@@ -2025,7 +2105,11 @@ async function boot() {
 
   vision = createVision();
   if (visionUsable()) vision.warm(['text']).catch(() => {}); // so the first search doesn't wait
-  scanBoard();
+  scanBoard().then(() => {
+    setInterval(() => {
+      if (!catalog.paused && !catalog.running) syncWithBoard();
+    }, CONFIG.syncEverySec * 1000);
+  });
 }
 
 boot();
