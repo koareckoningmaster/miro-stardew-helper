@@ -11,7 +11,7 @@ A 16-bit shopkeeper who lives in your Miro board's side panel. Pip greets everyo
 - **Actually looks at your trims.** Pip uses in-browser image recognition (a fashion-trained CLIP model) to tag every trim photo on the board by color and type, such as *lace, rickrack, pom-pom, sequin, velvet ribbon* and 25 more. He saves those tags on the board, so it only happens once per image and every visitor benefits. iPhone **HEIC** photos work too: Pip converts them in the browser.
 - **Only looks at the top layer.** Photos that have another photo sitting on top of them, like backdrops behind your frames or old photos stacked under new ones, are ignored. The name of the frame a photo sits on is searchable too, so a photo on a frame called "Bridal Lace" turns up for "bridal".
 - **Finds and shows.** He holds up the best match, asks if you'd like a closer look, and zooms the board to it. You can flip through other matches or click any result directly.
-- **Has some life to him.** He blinks, breathes, talks, grins when he finds something, and the city outside the atelier windows follows the time of day.
+- **Has some life to him.** He blinks, breathes and talks. When you search, he ducks behind his counter and rummages, tossing spools, buttons and ribbon over the edge, then comes back up gripping a square frame that shows the trim he found as a sharp, full-resolution photo. Ask for the next one and he puts it back under the desk and pulls up another. The city outside the atelier windows follows the time of day.
 
 ![Pip greeting a visitor and taking a search](docs/panel.png)
 

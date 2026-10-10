@@ -134,8 +134,11 @@ const EYES = ['open', 'closed', 'happy'];
 const MOUTHS = ['closed', 'o', 'open', 'grin'];
 
 const shopCtx = shopCanvas.getContext('2d');
+// 3 screen pixels per art pixel, times the display's pixel density (2 on retina), capped at 2.
+const RES = Math.round(3 * Math.min(2, Math.max(1, window.devicePixelRatio || 1)));
+shopCanvas.width = shopCanvas.height = SCENE_SIZE * RES;
 const images = {};
-const pose = { eyes: 'open', mouth: 'closed', breath: 0, lift: 0 };
+const pose = { eyes: 'open', mouth: 'closed', breath: 0, lift: 0, dx: 0, card: null, cardItemId: null, shake: 0 };
 let paintQueued = false;
 
 function loadArt() {
@@ -155,22 +158,38 @@ function loadArt() {
   ).then(paint);
 }
 
+/** Draws one frame: room, Pip, (card behind counter), tossed trims, counter, (card in front), sparkles. */
+function draw() {
+  const ctx = shopCtx;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, shopCanvas.width, shopCanvas.height);
+  ctx.setTransform(RES, 0, 0, RES, 0, 0); // draw in art pixels; each one becomes a crisp RES×RES block
+  ctx.imageSmoothingEnabled = false;
+  const back = images[`back-${scene.dataset.time}`] || images['back-day'];
+  if (back) ctx.drawImage(back, 0, 0);
+  const px = PORTRAIT.x + pose.dx;
+  const py = PORTRAIT.y + pose.breath + pose.lift;
+  if (images.portrait) {
+    const frame = EYES.indexOf(pose.eyes) * MOUTHS.length + MOUTHS.indexOf(pose.mouth);
+    const { size } = PORTRAIT;
+    ctx.drawImage(images.portrait, frame * size, 0, size, size, px, py, size, size);
+  }
+  // While he's below the counter the card is too; once he's up, he holds it out in front of it.
+  const cardInFront = pose.card && pose.lift <= 4;
+  if (pose.card && !cardInFront) drawHeld(ctx, px, py);
+  drawParticles(ctx, true);
+  if (images.front) ctx.drawImage(images.front, 0, 0);
+  if (cardInFront) drawHeld(ctx, px, py);
+  drawParticles(ctx, false);
+}
+
 /** Repaints on the next animation frame (coalesces many pose changes into one draw). */
 function paint() {
   if (paintQueued) return;
   paintQueued = true;
   requestAnimationFrame(() => {
     paintQueued = false;
-    const ctx = shopCtx;
-    ctx.clearRect(0, 0, SCENE_SIZE, SCENE_SIZE);
-    const back = images[`back-${scene.dataset.time}`] || images['back-day'];
-    if (back) ctx.drawImage(back, 0, 0);
-    if (images.portrait) {
-      const frame = EYES.indexOf(pose.eyes) * MOUTHS.length + MOUTHS.indexOf(pose.mouth);
-      const { x, y, size } = PORTRAIT;
-      ctx.drawImage(images.portrait, frame * size, 0, size, size, x, y + pose.breath + pose.lift, size, size);
-    }
-    if (images.front) ctx.drawImage(images.front, 0, 0);
+    draw();
   });
 }
 
@@ -179,18 +198,313 @@ function setPose(changes) {
   paint();
 }
 
+/* ═════════════════════════ Props: what Pip digs up, and the frame he holds up ═════════════════════════
+   His arms, the frame and the tossed trims are pixel grids drawn at the same pixel scale as his
+   portrait. The arms are traced from the reference art (fists gripping the frame's sides, sleeves
+   wrapping the forearms) and use his portrait's own skin and shirt colors. The photo inside the frame is
+   drawn at full screen resolution, so you see the real trim in high definition. */
+
+const PROP_PALETTE = {
+  O: '#3b2a20', w: '#c99a62', Y: '#e0b13a', y: '#b8862a', R: '#c4453a', Q: '#8e2c2a',
+  B: '#4f7dc0', b: '#2d4f86', W: '#f6efe0', l: '#cdbf9f', P: '#e98aa8', p: '#c45d82',
+  G: '#f6dd8c', g: '#d9b04f', D: '#ece6da',
+};
+// Pip's own colors, sampled from his portrait, so the arms match his face and shirt exactly.
+const ARM_PALETTE = {
+  S: '#fab786', s: '#f99a65', t: '#e88152', u: '#cc6049', R: '#a03c35', r: '#6c1f2f', // skin + maroon outline
+  L: '#434072', N: '#343358', n: '#2d2c4d', m: '#28273f', j: '#22213a', k: '#19181a', // navy shirt + outline
+};
+// Traced from the reference art: fist gripping the frame (fingers wrapping over its front), wrist,
+// and the sleeve wrapping the forearm, scaled to Pip's pixel size and snapped to his palette.
+const ARM_L = [
+  '.........rrrrrrrrr..',
+  '........rRutsssstur.',
+  '........rSSSSSSSSSur',
+  '........rSsstuRRtsur',
+  '........rssuRRRRRRr.',
+  '.......rsSSSSSSSstr.',
+  '.......rSSSSSSttstur',
+  '.......rtssurrrrRtRr',
+  '.......rRsSSSSSStRr.',
+  '.......jRSSSSsssstr.',
+  '......kjRsssuRRRutr.',
+  '.....knnruSsssssRr..',
+  '.....jNnjuSSSSsstr..',
+  '....kjnNnRsSStRrrr..',
+  '....knLNrruttrr.....',
+  '...knLnruSRuttr.....',
+  '..kjnjruSSSutur.....',
+  '..jNjnRsSSsttRr.....',
+  '.kLNNrSSSSstttr.....',
+  '.jNnLrSSSsttttu.....',
+  '.nNnLrSSsststtu.....',
+  '.nNnLrusssstttr.....',
+  '.jnjNnrtsssttRk.....',
+  '.kNnnLnrtsttRrj.....',
+  '.kjNnNLnruurkjj.....',
+  '..knnnNNnjjjnjk.....',
+  '..kjnnjnNnnnjjk.....',
+  '...kjNnjjjnnjk......',
+  '....kknnnnnjk.......',
+  '......kjjjkk........',
+];
+const ARM_R = ARM_L.map((row) => [...row].reverse().join(''));
+const TOSSABLES = [
+  ['OOOOO', 'OwwwO', '.YYY.', '.YyY.', '.YYY.', 'OwwwO', 'OOOOO'], // spool of gold thread
+  ['.RR....', 'R.QR..R', '....RR.'], // curl of ribbon
+  ['.BB.', 'BbbB', 'BbbB', '.BB.'], // button
+  ['WWWWWW', 'WlWWlW', '.W..W.'], // scrap of lace
+  ['.P.', 'PpP', '.P.'], // pom-pom
+  ['OOOOO', 'ORRRO', 'ORQRO', 'ORRRO', 'OOOOO'], // swatch
+];
+const SPARKLE = ['..G..', '.GgG.', 'GgGgG', '.GgG.', '..G..'];
+const PUFF = ['.DD.', 'DDDD', '.DD.'];
+
+function pixelSprite(rows, palette = PROP_PALETTE) {
+  const canvas = document.createElement('canvas');
+  canvas.width = rows[0].length;
+  canvas.height = rows.length;
+  const ctx = canvas.getContext('2d');
+  rows.forEach((row, y) =>
+    [...row].forEach((ch, x) => {
+      if (!palette[ch]) return;
+      ctx.fillStyle = palette[ch];
+      ctx.fillRect(x, y, 1, 1);
+    })
+  );
+  return canvas;
+}
+
+// The frame: square (trim photos are 1:1), dark brown with rounded corners and a lighter inner edge.
+const FRAME = { size: 36, border: 3, dx: 17, dy: 41 }; // dx/dy: offset from Pip's portrait
+function frameSprite() {
+  const n = FRAME.size;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = n;
+  const ctx = canvas.getContext('2d');
+  const fill = (color, x, y, w, h) => {
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, w, h);
+  };
+  fill('#1c0f0d', 1, 0, n - 2, n); // outline, with the corners knocked off
+  fill('#1c0f0d', 0, 1, n, n - 2);
+  fill('#3a2420', 1, 1, n - 2, n - 2); // frame body
+  fill('#5a3c33', 2, 2, n - 4, n - 4); // lighter inner edge
+  ctx.clearRect(FRAME.border, FRAME.border, n - FRAME.border * 2, n - FRAME.border * 2); // the window
+  return canvas;
+}
+
+const sprites = {
+  armL: pixelSprite(ARM_L, ARM_PALETTE),
+  armR: pixelSprite(ARM_R, ARM_PALETTE),
+  frame: frameSprite(),
+  tossables: TOSSABLES.map((rows) => pixelSprite(rows)),
+  sparkle: pixelSprite(SPARKLE),
+  puff: pixelSprite(PUFF),
+};
+
+function loadImage(src) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+/* High-definition photos: the original upload (HEIC converted if needed), cropped to a centered
+   square and kept at 320×320, which is sharper than the frame shows even on retina screens. */
+const HIDEF_SIZE = 320;
+const hiDefCache = new Map();
+const hiDefUrls = new Map();
+
+function hiDefPhoto(item) {
+  if (!hiDefCache.has(item.id)) {
+    const job = (async () => {
+      const full = await createImageBitmap(await readableImage(item));
+      const side = Math.min(full.width, full.height);
+      const square = await createImageBitmap(full, (full.width - side) / 2, (full.height - side) / 2, side, side, {
+        resizeWidth: HIDEF_SIZE,
+        resizeHeight: HIDEF_SIZE,
+        resizeQuality: 'high',
+      });
+      full.close();
+      return square;
+    })().catch((err) => {
+      console.info(`[Pip] No high-definition copy for ${item.id}:`, err?.message || err);
+      return null;
+    });
+    hiDefCache.set(item.id, job);
+    if (hiDefCache.size > 16) hiDefCache.delete(hiDefCache.keys().next().value); // keep memory in check
+  }
+  return hiDefCache.get(item.id);
+}
+
+/** The same high-definition square as an image URL, for the photo in the dialogue box. */
+function hiDefUrl(item) {
+  if (!hiDefUrls.has(item.id)) {
+    hiDefUrls.set(
+      item.id,
+      hiDefPhoto(item).then(
+        (bitmap) =>
+          bitmap &&
+          new Promise((resolve) => {
+            const c = document.createElement('canvas');
+            c.width = c.height = bitmap.width;
+            c.getContext('2d').drawImage(bitmap, 0, 0);
+            c.toBlob((blob) => resolve(blob ? URL.createObjectURL(blob) : null), 'image/jpeg', 0.92);
+          })
+      )
+    );
+  }
+  return hiDefUrls.get(item.id);
+}
+
+/** What Pip is holding: shows Miro's quick preview first, then swaps in the high-definition photo. */
+function makeHeld(item) {
+  const held = { itemId: item?.id ?? null, type: item?.type, photo: null, hiDef: false };
+  let markReady;
+  held.ready = new Promise((resolve) => (markReady = resolve));
+  if (item?.type === 'image') {
+    thumbnail(item)
+      .then((url) => url && loadImage(url))
+      .then((img) => {
+        if (img && !held.hiDef) {
+          held.photo = img;
+          paint();
+        }
+        markReady();
+      });
+    hiDefPhoto(item).then((bitmap) => {
+      if (!bitmap) return;
+      held.photo = bitmap;
+      held.hiDef = true;
+      paint();
+      markReady();
+    });
+  } else {
+    markReady();
+  }
+  return held;
+}
+
+/** Draws `img` into a square, cropping the middle if it isn't square. */
+function drawCover(ctx, img, x, y, size) {
+  const w = img.width;
+  const h = img.height;
+  const side = Math.min(w, h);
+  ctx.drawImage(img, (w - side) / 2, (h - side) / 2, side, side, x, y, size, size);
+}
+
+/* ═════════════════════════ Animation loop ═════════════════════════ */
+
+const particles = []; // things tossed up from behind the counter, and sparkles
+let looping = false;
+
+function toss(count = 1) {
+  if (reduceMotion) return;
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      sprite: pick(sprites.tossables),
+      x: 26 + Math.random() * 44,
+      y: 80,
+      vx: (Math.random() - 0.5) * 1.3,
+      vy: -1.8 - Math.random() * 1.1,
+      g: 0.11,
+      behind: true, // falls back down behind the counter
+    });
+  }
+  startLoop();
+}
+
+function sparkle(x, y) {
+  if (reduceMotion) return;
+  particles.push({ sprite: sprites.sparkle, x, y, vx: 0, vy: -0.15, g: 0, life: 28, behind: false });
+  startLoop();
+}
+
+function puff() {
+  if (reduceMotion) return;
+  for (const dx of [-14, 0, 14]) {
+    particles.push({ sprite: sprites.puff, x: 46 + dx, y: 78, vx: dx / 40, vy: -0.35, g: 0, life: 22, fade: true, behind: true });
+  }
+  startLoop();
+}
+
+function startLoop() {
+  if (looping) return;
+  looping = true;
+  const step = () => {
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.vy += p.g;
+      p.x += p.vx;
+      p.y += p.vy;
+      if (p.life !== undefined) p.life--;
+      if (p.y > 100 || p.life <= 0) particles.splice(i, 1);
+    }
+    draw();
+    if (particles.length || body.digging) requestAnimationFrame(step);
+    else looping = false;
+  };
+  requestAnimationFrame(step);
+}
+
+function drawParticles(ctx, behind) {
+  for (const p of particles) {
+    if (p.behind !== behind) continue;
+    ctx.globalAlpha = p.fade ? Math.max(0, p.life / 22) : 1;
+    ctx.drawImage(p.sprite, Math.round(p.x - p.sprite.width / 2), Math.round(p.y - p.sprite.height / 2));
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawHeld(ctx, px, py) {
+  const held = pose.card;
+  const fx = px + FRAME.dx + pose.shake;
+  const fy = py + FRAME.dy;
+  const win = FRAME.size - FRAME.border * 2;
+  const wx = fx + FRAME.border;
+  const wy = fy + FRAME.border;
+
+  ctx.fillStyle = '#f6f1e6';
+  ctx.fillRect(wx, wy, win, win);
+  if (held.photo) {
+    // The photo is drawn smoothly at full screen resolution; everything else stays crisp pixel art.
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    drawCover(ctx, held.photo, wx, wy, win);
+    ctx.imageSmoothingEnabled = false;
+  } else if (held.type === 'sticky_note') {
+    ctx.fillStyle = '#f6d55c';
+    ctx.fillRect(wx + 4, wy + 4, win - 8, win - 8);
+    ctx.fillStyle = '#a8862a';
+    for (let i = 0; i < 4; i++) ctx.fillRect(wx + 7, wy + 9 + i * 4, win - 14 - (i % 2) * 4, 1);
+  } else {
+    ctx.fillStyle = '#6b5f58';
+    for (let i = 0; i < 5; i++) ctx.fillRect(wx + 4, wy + 6 + i * 4, win - 8 - (i % 2) * 6, 1);
+  }
+  ctx.drawImage(sprites.frame, fx, fy);
+  // Fists wrap the frame's sides like the reference: column 16 of the left arm sits on the frame's edge.
+  ctx.drawImage(sprites.armL, fx - 16, fy + 5);
+  ctx.drawImage(sprites.armR, fx + FRAME.size - 4, fy + 5);
+}
+
 const body = {
   restMouth: 'closed',
   restEyes: 'open',
   talkTimer: null,
   moveTimers: [],
+  motionId: 0, // every new move cancels the one before it
+  digging: false,
+  digTimer: null,
 
   /** Idle life: breathing (a 1-pixel rise and fall behind the counter) and blinking. */
   liveForever() {
     if (reduceMotion) return;
     const breathe = () => {
       setPose({ breath: pose.breath ? 0 : 1 });
-      setTimeout(breathe, scene.classList.contains('is-searching') ? 260 : 1300);
+      setTimeout(breathe, 1300);
     };
     setTimeout(breathe, 1300);
     const blink = () => {
@@ -232,6 +546,7 @@ const body = {
 
   /** A sequence of vertical offsets (in art pixels), one step every `ms`. */
   move(offsets, ms) {
+    this.motionId++;
     this.moveTimers.forEach(clearTimeout);
     if (reduceMotion) return;
     this.moveTimers = offsets.map((lift, i) => setTimeout(() => setPose({ lift }), i * ms));
@@ -244,6 +559,97 @@ const body = {
   /** A friendly greeting bounce, the shopkeeper's version of a wave. */
   nod(times = 2) {
     this.move(Array.from({ length: times }, () => [-1, -2, -1, 0]).flat(), 90);
+  },
+
+  /** Steps through vertical offsets (bigger = lower behind the counter). Returns false if interrupted. */
+  async glide(lifts, ms, id) {
+    this.moveTimers.forEach(clearTimeout);
+    for (const lift of lifts) {
+      if (id !== this.motionId) return false;
+      setPose({ lift });
+      await sleep(ms);
+    }
+    return id === this.motionId;
+  },
+
+  /** Duck behind the counter and rummage, tossing trims over the edge, until dig(false). */
+  async dig(on) {
+    clearInterval(this.digTimer);
+    if (!on) {
+      this.digging = false;
+      setPose({ dx: 0 });
+      return;
+    }
+    if (reduceMotion) return;
+    const id = ++this.motionId;
+    this.digging = true;
+    startLoop();
+    if (pose.card) {
+      if (!(await this.glide([10, 22, 34], 55, id))) return; // put the last card back first
+      setPose({ card: null, cardItemId: null });
+    }
+    if (!(await this.glide([12, 26, 38, 44], 55, id))) return;
+    puff();
+    let tick = 0;
+    this.digTimer = setInterval(() => {
+      if (id !== this.motionId) return clearInterval(this.digTimer);
+      tick++;
+      setPose({ lift: 41 + Math.floor(Math.random() * 5), dx: pick([-1, 0, 0, 1]) });
+      if (tick % 2 === 0) toss(Math.random() < 0.3 ? 2 : 1);
+    }, 150);
+  },
+
+  /** Reach under the counter (if not already down there) and come up holding a card of `item`. */
+  async presentItem(item) {
+    const held = makeHeld(item);
+    clearInterval(this.digTimer);
+    this.digging = false;
+    const id = ++this.motionId;
+    if (reduceMotion) {
+      await Promise.race([held.ready, sleep(1200)]);
+      setPose({ card: held, cardItemId: item?.id ?? null, lift: 0, dx: 0 });
+      return;
+    }
+    if (pose.lift < 30) {
+      if (!(await this.glide(pose.card ? [10, 22, 34, 42] : [12, 26, 38, 44], 55, id))) return;
+      setPose({ card: null, cardItemId: null, dx: 0 });
+      toss(1);
+      await sleep(280);
+    }
+    await Promise.race([held.ready, sleep(1200)]); // have at least the quick preview in hand
+    if (id !== this.motionId) return;
+    setPose({ card: held, cardItemId: item?.id ?? null, dx: 0 });
+    if (!(await this.glide([34, 22, 10, 2, -2, 0], 55, id))) return;
+    sparkle(PORTRAIT.x + FRAME.dx + FRAME.size - 2, PORTRAIT.y + FRAME.dy + 1);
+    for (const shake of [1, -1, 1, 0]) {
+      if (id !== this.motionId) return;
+      setPose({ shake });
+      await sleep(70);
+    }
+  },
+
+  /** Pop back up empty-handed (nothing found, or something went wrong). */
+  async riseEmpty() {
+    clearInterval(this.digTimer);
+    this.digging = false;
+    const id = ++this.motionId;
+    setPose({ card: null, cardItemId: null, dx: 0 });
+    if (pose.lift > 0) await this.glide([30, 16, 6, 0], 55, id);
+  },
+
+  /** Tuck the card back under the counter. */
+  async putAway() {
+    if (!pose.card) return;
+    const id = ++this.motionId;
+    if (reduceMotion) return setPose({ card: null, cardItemId: null });
+    if (!(await this.glide([8, 18, 28], 55, id))) return;
+    setPose({ card: null, cardItemId: null });
+    await this.glide([18, 8, 2, 0], 55, id);
+  },
+
+  putAwayLater(ms) {
+    const id = this.motionId;
+    setTimeout(() => id === this.motionId && this.putAway(), ms);
   },
 };
 
@@ -318,8 +724,14 @@ function showReveal(item) {
   revealImg.removeAttribute('src');
   const wanted = item.id;
   revealEl.dataset.id = wanted;
+  let sharp = false;
   thumbnail(item).then((url) => {
-    if (url && revealEl.dataset.id === wanted) revealImg.src = url;
+    if (url && !sharp && revealEl.dataset.id === wanted) revealImg.src = url;
+  });
+  hiDefUrl(item).then((url) => {
+    if (!url || revealEl.dataset.id !== wanted) return;
+    sharp = true;
+    revealImg.src = url;
   });
 }
 
@@ -1013,7 +1425,9 @@ function ambient(text) {
 }
 
 function onPipClick() {
-  body.hop();
+  if (pose.card) body.putAway();
+  else if (body.digging || pose.lift > 10) body.riseEmpty();
+  else body.hop();
   if (!askForm.hidden && !busy) {
     say(line('poke'));
     input.focus({ preventScroll: true });
@@ -1057,7 +1471,7 @@ async function runSearch(raw) {
   hideAsk();
   body.mood('neutral');
   popEmote('?');
-  scene.classList.add('is-searching'); // quick fidgety breathing while he looks
+  body.dig(true); // ducks behind the counter and rummages, tossing trims over the edge
   catalog.paused = true;
   say(line('searching', { query }));
 
@@ -1069,7 +1483,7 @@ async function runSearch(raw) {
       miro.board.get({ type: CONFIG.searchTypes }),
       miro.board.get({ type: 'frame' }).catch(() => []),
       queryVector(query, 1500),
-      sleep(reduceMotion ? 0 : 700),
+      sleep(reduceMotion ? 0 : 2000), // give the rummaging time to read, even on small boards
     ]);
     rememberFrames(frames);
     // Only photos on the top layer count; everything else on the board is searched as usual.
@@ -1078,6 +1492,7 @@ async function runSearch(raw) {
   } catch (err) {
     console.error('[Pip] Search failed:', err);
     finishSearching();
+    body.riseEmpty();
     if (flow === flowId) await say(line('boardError'));
     return endFlow(flow);
   }
@@ -1098,6 +1513,8 @@ async function runSearch(raw) {
   renderFinds(finds, ranked.length, query);
 
   if (!finds.length) {
+    body.riseEmpty(); // comes back up empty-handed
+    popEmote('?');
     const left = catalog.queue.length + (catalog.running ? 1 : 0);
     await say(left ? line('noneYet', { query, left }) : line('none', { query }));
     showAsk();
@@ -1109,7 +1526,7 @@ async function runSearch(raw) {
 }
 
 function finishSearching() {
-  scene.classList.remove('is-searching');
+  body.dig(false); // stops rummaging; he stays down there until he comes up with something
   catalog.paused = false;
 }
 
@@ -1121,11 +1538,16 @@ async function offer(finds, total, flow) {
   const confidence = !finds[0].keyword ? 'guess' : finds[0].coverage === 1 ? 'sure' : 'partial';
   body.mood('happy');
   popEmote('!');
-  body.hop();
+  await body.presentItem(finds[0].item); // comes up from under the counter holding it
+  if (flow !== flowId) return;
 
   while (flow === flowId) {
     const find = finds[i];
     markActive(i);
+    if (i > 0 || wrapped) {
+      await body.presentItem(find.item); // puts the last one back under the desk and pulls up this one
+      if (flow !== flowId) return;
+    }
     const thing = describe(find, currentQuery);
     let intro;
     if (i > 0) intro = line('next', { thing });
@@ -1152,6 +1574,7 @@ async function offer(finds, total, flow) {
       continue;
     }
     body.mood('neutral');
+    body.putAway();
     await say(line('declined'));
     return;
   }
@@ -1166,13 +1589,15 @@ async function travelFromList(i) {
 }
 
 async function travelTo(find, flow) {
-  body.hop();
+  if (pose.cardItemId !== find.item.id) await body.presentItem(find.item);
+  if (flow !== flowId) return;
   say(line('going'), { reveal: find.item });
   try {
     await miro.board.viewport.zoomTo(find.item);
   } catch (err) {
     console.warn('[Pip] zoomTo failed:', err);
     body.mood('neutral');
+    body.putAway();
     if (flow === flowId) await say(line('missing'));
     return;
   }
@@ -1187,6 +1612,7 @@ async function travelTo(find, flow) {
   body.nod(2);
   await sleep(reduceMotion ? 0 : 350);
   await say(line('arrived', { kind: TYPE_NAMES[find.item.type] || 'item' }), { reveal: find.item });
+  body.putAwayLater(3500);
 }
 
 /* ═════════════════════════ Greetings ═════════════════════════ */
