@@ -134,50 +134,67 @@ const ART = {
   walk: 'assets/squeak-walk.png', // full-body frames for walking to the shelves and searching them
 };
 
-/* Squeak's full-body frames (assets/squeak-walk.png), redrawn from the reference sprite sheets at his
-   portrait's pixel size and palette. x/w/h: where each frame sits in the sheet. headX/feetX: anchor
-   columns for lining frames up. handX/handY: where his hand is, for items he holds or tosses.
-   away_8/toward_8 are head-and-shoulders close-ups at portrait size (turning away / arriving back). */
+/* Squeak's full-body frames (assets/squeak-walk.png), converted from the reference sprite sheets
+   at his portrait's pixel size and palette.
+   - away_8 / toward_8: head-and-shoulders close-ups (turning away / arriving back).
+   - away_s0–9 / toward_s0–9: a real walk cycle, one frame per step, shrinking with distance. The
+     four beats repeat: stride, passing (body bobs up), the other leg's stride, passing.
+   - shuffle_0–3: the same cycle at shelf distance, for stepping along the shelf.
+   - the rest: search poses at the shelves.
+   x/w/h: where each frame sits in the sheet. headX/feetX: anchor columns. handX/handY: his hand. */
 const WALK_FRAMES = {
-  away_8: { x: 0, w: 53, h: 104, headX: 24.8, feetX: 25.9 },
-  toward_8: { x: 54, w: 51, h: 104, headX: 25.6, feetX: 24.7 },
-  away_7: { x: 106, w: 31, h: 84, headX: 14.7, feetX: 16.2 },
-  toward_7: { x: 138, w: 31, h: 88, headX: 14.3, feetX: 14.8 },
-  away_6: { x: 170, w: 27, h: 73, headX: 13.0, feetX: 14.9 },
-  toward_6: { x: 198, w: 27, h: 78, headX: 12.8, feetX: 14.7 },
-  away_5: { x: 226, w: 24, h: 65, headX: 12.4, feetX: 13.8 },
-  toward_5: { x: 251, w: 24, h: 66, headX: 12.2, feetX: 13.8 },
-  away_4: { x: 276, w: 21, h: 56, headX: 10.2, feetX: 10.7 },
-  toward_4: { x: 298, w: 21, h: 57, headX: 10.9, feetX: 12.5 },
-  away_3: { x: 320, w: 18, h: 48, headX: 8.6, feetX: 7.2 },
-  toward_3: { x: 339, w: 18, h: 48, headX: 9.4, feetX: 10.7 },
-  away_2: { x: 358, w: 16, h: 43, headX: 7.4, feetX: 5.5 },
-  toward_2: { x: 375, w: 16, h: 42, headX: 7.7, feetX: 8.5 },
-  away_1: { x: 392, w: 14, h: 35, headX: 6.5, feetX: 5.5 },
-  toward_1: { x: 407, w: 14, h: 36, headX: 7.0, feetX: 5.0 },
-  look_left: { x: 422, w: 15, h: 36, headX: 8.2, feetX: 7.1 },
-  look_right: { x: 438, w: 15, h: 36, headX: 8.3, feetX: 7.1 },
-  bend: { x: 454, w: 20, h: 27, headX: 12.9, feetX: 8.9, handX: 18, handY: 17 },
-  think: { x: 475, w: 17, h: 36, headX: 7.7, feetX: 8.8 },
-  look_up: { x: 493, w: 16, h: 36, headX: 5.5, feetX: 7.7 },
-  reach_up: { x: 510, w: 17, h: 37, headX: 12.5, feetX: 8.5, handX: 13, handY: 1 },
-  examine: { x: 528, w: 18, h: 35, headX: 9.6, feetX: 8.7, handX: 16, handY: 12 },
-  toss: { x: 547, w: 21, h: 35, headX: 7.6, feetX: 8.1, handX: 18, handY: 10 },
-  stand_back: { x: 569, w: 15, h: 36, headX: 6.8, feetX: 7.0 },
+  away_s0: { x: 0, w: 31, h: 86, headX: 15.5, feetX: 15.6 },
+  away_s1: { x: 32, w: 29, h: 77, headX: 13.9, feetX: 16.1 },
+  away_s2: { x: 62, w: 26, h: 71, headX: 12.1, feetX: 11.9 },
+  away_s3: { x: 89, w: 24, h: 63, headX: 11.4, feetX: 13.2 },
+  away_s4: { x: 114, w: 22, h: 58, headX: 10.9, feetX: 11.0 },
+  away_s5: { x: 137, w: 20, h: 52, headX: 9.5, feetX: 11.2 },
+  away_s6: { x: 158, w: 18, h: 48, headX: 8.4, feetX: 7.8 },
+  away_s7: { x: 177, w: 17, h: 44, headX: 7.9, feetX: 9.1 },
+  away_s8: { x: 195, w: 15, h: 40, headX: 7.2, feetX: 7.6 },
+  away_s9: { x: 211, w: 14, h: 37, headX: 6.5, feetX: 7.4 },
+  toward_s0: { x: 226, w: 14, h: 38, headX: 7.0, feetX: 8.2 },
+  toward_s1: { x: 241, w: 15, h: 42, headX: 7.4, feetX: 8.5 },
+  toward_s2: { x: 257, w: 17, h: 45, headX: 7.4, feetX: 6.0 },
+  toward_s3: { x: 275, w: 18, h: 50, headX: 8.9, feetX: 10.3 },
+  toward_s4: { x: 294, w: 20, h: 54, headX: 10.4, feetX: 12.3 },
+  toward_s5: { x: 315, w: 22, h: 60, headX: 11.1, feetX: 12.8 },
+  toward_s6: { x: 338, w: 24, h: 65, headX: 10.5, feetX: 8.3 },
+  toward_s7: { x: 363, w: 26, h: 74, headX: 13.2, feetX: 15.2 },
+  toward_s8: { x: 390, w: 29, h: 80, headX: 15.4, feetX: 17.7 },
+  toward_s9: { x: 420, w: 31, h: 89, headX: 15.8, feetX: 18.3 },
+  shuffle_0: { x: 452, w: 14, h: 36, headX: 6.9, feetX: 6.9 },
+  shuffle_1: { x: 467, w: 14, h: 36, headX: 6.5, feetX: 7.4 },
+  shuffle_2: { x: 482, w: 14, h: 36, headX: 6.1, feetX: 6.1 },
+  shuffle_3: { x: 497, w: 14, h: 36, headX: 6.5, feetX: 7.4 },
+  away_8: { x: 512, w: 53, h: 104, headX: 24.8, feetX: 25.9 },
+  toward_8: { x: 566, w: 51, h: 104, headX: 25.6, feetX: 24.7 },
+  look_left: { x: 618, w: 15, h: 36, headX: 8.2, feetX: 7.1 },
+  look_right: { x: 634, w: 15, h: 36, headX: 8.3, feetX: 7.1 },
+  bend: { x: 650, w: 20, h: 27, headX: 12.9, feetX: 8.9, handX: 18, handY: 17 },
+  think: { x: 671, w: 17, h: 36, headX: 7.7, feetX: 8.8 },
+  look_up: { x: 689, w: 16, h: 36, headX: 5.5, feetX: 7.7 },
+  reach_up: { x: 706, w: 17, h: 37, headX: 12.5, feetX: 8.5, handX: 13, handY: 1 },
+  examine: { x: 724, w: 18, h: 35, headX: 9.6, feetX: 8.7, handX: 16, handY: 12 },
+  toss: { x: 743, w: 21, h: 35, headX: 7.6, feetX: 8.1, handX: 18, handY: 10 },
+  stand_back: { x: 765, w: 15, h: 36, headX: 6.8, feetX: 7.0 },
 };
 const SHELF_PATH = {
-  x: 48, // he walks straight back to the center shelving, under the arched window
+  counterX: 48, // he turns from the middle of the counter…
+  shelfMin: 38, // …and searches somewhere along the center shelving
+  shelfMax: 58,
   closeTop: 23, // head top for the close-ups, matching the portrait
-  headTop: { 7: 25, 6: 26, 5: 27, 4: 28, 3: 30, 2: 31, 1: 32 }, // walking frames: head stays near eye level…
-  floorY: 66, // …while his feet climb to the base of the shelves
+  steps: 10, // walk-cycle frames each way
+  headNear: 24, // head top on the first step (near the counter)…
+  headFar: 30, // …and at the shelves (his head stays near eye level while his feet climb)
+  floorY: 66, // the floor line at the base of the shelves
 };
 
-/** Where a full-body frame goes in the scene. */
-function walkPlacement(name) {
-  const f = WALK_FRAMES[name];
-  if (name.endsWith('_8')) return { f, x: Math.round(SHELF_PATH.x - f.headX), y: SHELF_PATH.closeTop };
-  if (/^(away|toward)_\d$/.test(name)) return { f, x: Math.round(SHELF_PATH.x - f.headX), y: SHELF_PATH.headTop[name.slice(-1)] };
-  return { f, x: Math.round(SHELF_PATH.x - f.feetX), y: SHELF_PATH.floorY - f.h };
+/** A full-body frame at a spot: anchored by the head (walking, close-ups) or by the feet on the floor. */
+function placeFrame(frame, cx, { headTop = null, bob = 0 } = {}) {
+  const f = WALK_FRAMES[frame];
+  if (headTop !== null) return { frame, x: Math.round(cx - f.headX), y: headTop - bob };
+  return { frame, x: Math.round(cx - f.feetX), y: SHELF_PATH.floorY - f.h - bob };
 }
 const SCENE_SIZE = 96;
 const PORTRAIT = { x: 13, y: 18, size: 64 }; // head centered under the big arched window
@@ -480,15 +497,16 @@ function toss(count = 1) {
 }
 
 /** A trim he decided against, tossed from his hand onto the floor by the shelves. */
-function tossFromHand(frame) {
-  if (reduceMotion) return;
-  const { f, x, y } = walkPlacement(frame);
+function tossFromHand() {
+  if (reduceMotion || !pose.away) return;
+  const a = pose.away;
+  const f = WALK_FRAMES[a.frame];
   if (f.handX === undefined) return;
   particles.push({
     sprite: pick(sprites.smallTrims),
-    x: x + f.handX,
-    y: y + f.handY,
-    vx: 0.45 + Math.random() * 0.35,
+    x: a.x + f.handX,
+    y: a.y + f.handY,
+    vx: (Math.random() < 0.5 ? -1 : 1) * (0.35 + Math.random() * 0.35),
     vy: -0.9 - Math.random() * 0.5,
     g: 0.08,
     floor: SHELF_PATH.floorY + 1 + Math.round(Math.random() * 3),
@@ -560,19 +578,21 @@ function placeEmote(x, y) {
 
 /** Squeak away from the counter: a full-body frame, a soft floor shadow, and whatever he's holding. */
 function drawAway(ctx) {
-  const { f, x, y } = walkPlacement(pose.away);
-  const foot = y + f.h - 1;
-  if (!pose.away.endsWith('_8') && foot < 80) {
+  const a = pose.away;
+  const f = WALK_FRAMES[a.frame];
+  const foot = a.y + f.h - 1;
+  if (!a.frame.endsWith('_8') && foot < 80) {
+    const cx = Math.round(a.x + f.feetX);
     const half = Math.max(3, Math.round(f.w * 0.35));
     ctx.fillStyle = 'rgba(30, 20, 10, 0.28)';
-    ctx.fillRect(SHELF_PATH.x - half + 1, foot, half * 2 - 2, 1);
-    ctx.fillRect(SHELF_PATH.x - half, foot + 1, half * 2, 1);
+    ctx.fillRect(cx - half + 1, foot, half * 2 - 2, 1);
+    ctx.fillRect(cx - half, foot + 1, half * 2, 1);
   }
-  ctx.drawImage(images.walk, f.x, 0, f.w, f.h, x, y, f.w, f.h);
-  placeEmote(x + f.w - 2, y);
+  ctx.drawImage(images.walk, f.x, 0, f.w, f.h, a.x, a.y, f.w, f.h);
+  placeEmote(a.x + f.w - 2, a.y);
   if (pose.handItem && f.handX !== undefined) {
     const item = pose.handItem;
-    ctx.drawImage(item, x + f.handX - (item.width >> 1), y + f.handY - item.height + 1);
+    ctx.drawImage(item, a.x + f.handX - (item.width >> 1), a.y + f.handY - item.height + 1);
   }
 }
 
@@ -725,30 +745,63 @@ const body = {
     return id === this.motionId;
   },
 
-  /** Turn around, walk back to the shelves, and search them until called back with comeBack(). */
+  spotX: 48,
+
+  /** Turn around, walk back to a spot on the shelves, and search them until called back. */
   async goToShelves() {
     if (reduceMotion || !images.walk) return this.dig(true);
     clearInterval(this.digTimer);
     this.digging = false;
     const id = ++this.motionId;
     this.atShelves = true;
+    const { counterX, shelfMin, shelfMax, steps, headNear, headFar, closeTop } = SHELF_PATH;
+    this.spotX = shelfMin + 4 + Math.random() * (shelfMax - shelfMin - 8);
     setPose({ card: null, cardItemId: null, lift: 0, dx: 0, cardLift: 0 });
-    if (!(await this.showFrame(id, 'away_8', 220))) return;
-    for (const k of [7, 6, 5, 4, 3, 2, 1]) if (!(await this.showFrame(id, `away_${k}`, 115))) return;
-    // Searching: a looping routine through the reference poses, picking things up and tossing the misses.
-    const routine = [
-      ['stand_back', 320], ['look_up', 420], ['reach_up', 520], ['examine', 560, 'hold'], ['toss', 360, 'toss'],
-      ['look_left', 380], ['bend', 600], ['think', 640], ['look_right', 380], ['reach_up', 480],
-      ['examine', 520, 'hold'], ['toss', 360, 'toss'],
-    ];
-    for (let i = 0; id === this.motionId && this.atShelves; i++) {
-      const [frame, ms, action] = routine[i % routine.length];
-      const held = action === 'hold' ? pick(sprites.smallTrims) : null;
-      if (id !== this.motionId) return;
-      setPose({ away: frame, handItem: held });
-      if (action === 'toss') tossFromHand(frame);
-      await sleep(ms);
+    if (!(await this.showFrame(id, placeFrame('away_8', counterX, { headTop: closeTop }), 220))) return;
+    for (let i = 0; i < steps; i++) {
+      const t = i / (steps - 1);
+      const cx = counterX + (this.spotX - counterX) * t;
+      const headTop = Math.round(headNear + (headFar - headNear) * t);
+      // passing beats (odd frames) lift the body a pixel: that bob is what makes it read as walking
+      if (!(await this.showFrame(id, placeFrame(`away_s${i}`, cx, { headTop, bob: i % 2 }), 135))) return;
     }
+    await this.searchShelves(id);
+  },
+
+  /** A random series of things to do at the shelves, stepping along to a new spot between them. */
+  async searchShelves(id) {
+    const ACTIONS = {
+      reach: () => [['look_up', 360], ['reach_up', 640], ['examine', 620, 'hold'], ['toss', 380, 'toss']],
+      bend: () => [[pick(['look_left', 'look_right']), 300], ['bend', 780], ['examine', 600, 'hold'], ['toss', 380, 'toss']],
+      think: () => [['stand_back', 260], ['think', 950]],
+      glance: () => [['look_left', 440], ['look_right', 440], ['stand_back', 220]],
+      browse: () => [['look_up', 560], ['stand_back', 320]],
+    };
+    let last = null;
+    while (id === this.motionId && this.atShelves) {
+      const action = pick(Object.keys(ACTIONS).filter((a) => a !== last));
+      last = action;
+      for (const [frame, ms, extra] of ACTIONS[action]()) {
+        if (id !== this.motionId || !this.atShelves) return;
+        setPose({ away: placeFrame(frame, this.spotX), handItem: extra === 'hold' ? pick(sprites.smallTrims) : null });
+        if (extra === 'toss') tossFromHand();
+        await sleep(ms * (0.85 + Math.random() * 0.3));
+      }
+      if (id !== this.motionId || !this.atShelves) return;
+      const { shelfMin, shelfMax } = SHELF_PATH;
+      const dir = this.spotX < shelfMin + 5 ? 1 : this.spotX > shelfMax - 5 ? -1 : Math.random() < 0.5 ? -1 : 1;
+      await this.stepAlong(id, Math.min(shelfMax, Math.max(shelfMin, this.spotX + dir * (4 + Math.random() * 6))));
+    }
+  },
+
+  /** A few walking steps sideways along the shelf. */
+  async stepAlong(id, toX) {
+    const from = this.spotX;
+    for (let i = 1; i <= 4; i++) {
+      this.spotX = from + (toX - from) * (i / 4);
+      if (!(await this.showFrame(id, placeFrame(`shuffle_${(i - 1) % 4}`, this.spotX, { bob: (i - 1) % 2 }), 135))) return false;
+    }
+    return true;
   },
 
   /** Walk back from the shelves; with an item, raise it over the counter in the frame. */
@@ -756,12 +809,18 @@ const body = {
     const id = ++this.motionId;
     this.atShelves = false;
     const held = item ? makeHeld(item) : null;
+    const { counterX, steps, headNear, headFar, closeTop } = SHELF_PATH;
     if (item) {
       // the "aha" moment: hold it up to the light
-      if (!(await this.showFrame(id, 'examine', 520, sprites.sparkle))) return;
-    } else if (!(await this.showFrame(id, 'look_right', 320))) return;
-    for (const k of [1, 2, 3, 4, 5, 6, 7]) if (!(await this.showFrame(id, `toward_${k}`, 115))) return;
-    if (!(await this.showFrame(id, 'toward_8', 200))) return;
+      if (!(await this.showFrame(id, placeFrame('examine', this.spotX), 520, sprites.sparkle))) return;
+    } else if (!(await this.showFrame(id, placeFrame('look_right', this.spotX), 320))) return;
+    for (let i = 0; i < steps; i++) {
+      const t = i / (steps - 1);
+      const cx = this.spotX + (counterX - this.spotX) * t;
+      const headTop = Math.round(headFar + (headNear - headFar) * t);
+      if (!(await this.showFrame(id, placeFrame(`toward_s${i}`, cx, { headTop, bob: i % 2 }), 135))) return;
+    }
+    if (!(await this.showFrame(id, placeFrame('toward_8', counterX, { headTop: closeTop }), 200))) return;
     if (!item) {
       setPose({ away: null, handItem: null, lift: 0 });
       return;
@@ -782,7 +841,6 @@ const body = {
     }
   },
 
-  /** Back to the counter from wherever he is: walking back from the shelves, or up from under the desk. */
   comeBack(item = null) {
     if (pose.away) return this.returnFromShelves(item);
     return item ? this.presentItem(item) : this.riseEmpty();
