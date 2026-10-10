@@ -78,6 +78,15 @@ export const LINES = {
     '{count} matches! My favorite is {thing}.',
     'Ooh, {count} candidates. Let\'s start with {thing}.',
   ],
+  // Some of the words matched (a tag, a title or a frame name), but not all of them.
+  partialOne: [
+    'Not an exact match, but this is close: {thing}.',
+    'This matches part of what you described: {thing}.',
+  ],
+  partialMany: [
+    'Nothing matches every word, but {count} come close. The best is {thing}.',
+    'I found {count} partial matches. The closest is {thing}.',
+  ],
   guessOne: [
     'I\'m not totally sure, but this looks close: {thing}.',
     'Best I can tell, it might be {thing}.',

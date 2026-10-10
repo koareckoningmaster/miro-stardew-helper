@@ -461,7 +461,7 @@ const visionUsable = () => !vision.state.failed && typeof vision.embedText === '
    who opens Pip afterwards gets instant, recognition-powered search. */
 
 const index = new Map(); // image id -> { tags: string[], embedding: Float32Array }
-const catalog = { queue: [], running: false, paused: false, readOnly: false, done: 0, total: 0 };
+const catalog = { queue: [], running: false, paused: false, readOnly: false, done: 0, total: 0, failed: 0, skipped: 0 };
 
 function packEmbedding(vec) {
   let max = 0;
@@ -500,23 +500,35 @@ function renderCatalogSign() {
   if (catalog.running && vision.state.visionReady) {
     setSign(`Cataloguing trims: ${catalog.done} of ${catalog.total}`, catalog.total ? catalog.done / catalog.total : 0);
   } else if (!catalog.running && catalog.total && !catalog.queue.length) {
-    setSign(`${index.size} trims catalogued`);
-    hideSign(2500);
+    const notes = [];
+    if (catalog.failed) notes.push(`${catalog.failed} couldn't be read`);
+    if (catalog.skipped) notes.push(`${catalog.skipped} underneath other photos skipped`);
+    setSign(`${index.size} trims catalogued${notes.length ? ` (${notes.join(', ')})` : ''}`);
+    hideSign(notes.length ? 9000 : 2500);
   }
 }
 
 async function scanBoard() {
   let images;
+  let frames;
   try {
-    images = await miro.board.get({ type: 'image' });
+    [images, frames] = await Promise.all([
+      miro.board.get({ type: 'image' }),
+      miro.board.get({ type: 'frame' }).catch(() => []),
+    ]);
   } catch (err) {
     console.warn('[Pip] Could not list images:', err);
     return;
   }
-  catalog.total = images.length;
+  rememberFrames(frames);
+  const top = await topLayerIds(images, frames);
+  const onTop = images.filter((image) => top.has(image.id));
+  catalog.skipped = images.length - onTop.length;
+  catalog.total = onTop.length;
   catalog.done = 0;
+  catalog.failed = 0;
   catalog.queue = [];
-  await mapLimit(images, 6, async (image) => {
+  await mapLimit(onTop, 6, async (image) => {
     const entry = readMeta(await image.getMetadata(CONFIG.metaKey).catch(() => undefined));
     if (entry) {
       index.set(image.id, entry);
@@ -526,14 +538,134 @@ async function scanBoard() {
     }
   });
   if (catalog.queue.length) runCatalog();
+  else renderCatalogSign();
 }
 
-async function imageBlob(image) {
+/* ═════════════════════════ Reading photos (HEIC-safe) ═════════════════════════
+   Miro keeps the original file that was uploaded. iPhone photos are often HEIC, which Chrome and
+   Edge can't open, so Pip converts those to JPEG first. If that fails too, he uses Miro's own
+   preview copy (smaller, but always a normal JPEG/PNG), so every photo gets catalogued. */
+
+const HEIC_CONVERTER = 'https://cdn.jsdelivr.net/npm/heic2any@0.0.4'; // MIT licensed; loaded only if a HEIC turns up
+let heicConverter = null;
+
+function loadHeicConverter() {
+  heicConverter ??= new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = HEIC_CONVERTER;
+    script.onload = () => (window.heic2any ? resolve(window.heic2any) : reject(new Error('HEIC converter missing')));
+    script.onerror = () => reject(new Error('Could not load the HEIC converter'));
+    document.head.append(script);
+  }).catch((err) => {
+    heicConverter = null; // allow a retry later
+    throw err;
+  });
+  return heicConverter;
+}
+
+async function browserCanRead(blob) {
   try {
-    return await image.getFile('original');
+    const bitmap = await createImageBitmap(blob);
+    bitmap.close();
+    return true;
   } catch {
-    return image.getFile('preview');
+    return false;
   }
+}
+
+/** A version of the photo the browser can decode: the original, a JPEG converted from HEIC, or Miro's preview. */
+async function readableImage(image) {
+  let original = null;
+  try {
+    original = await image.getFile('original');
+  } catch {}
+  if (original && (await browserCanRead(original))) return original;
+
+  if (original) {
+    try {
+      const heic2any = await loadHeicConverter();
+      const converted = await heic2any({ blob: original, toType: 'image/jpeg', quality: 0.92 });
+      const jpeg = Array.isArray(converted) ? converted[0] : converted;
+      if (jpeg && (await browserCanRead(jpeg))) return jpeg;
+    } catch (err) {
+      console.info(`[Pip] Couldn't convert image ${image.id}, using Miro's preview instead:`, err?.message || err);
+    }
+  }
+  return image.getFile('preview');
+}
+
+/* ═════════════════════════ Top layer only ═════════════════════════
+   Pip ignores any photo that has another photo sitting on top of it: backdrops behind frames,
+   older photos stacked under newer ones, and so on. A small label or sticky note on a photo
+   doesn't count, because only photos are checked, and only when at least half of the upper
+   photo overlaps the one beneath. */
+
+const COVER_SHARE = 0.5;
+let frameTitles = new Map(); // frame id -> title, so a frame's name can be searched too
+
+function rememberFrames(frames = []) {
+  frameTitles = new Map(frames.map((f) => [f.id, plainText(f.title)]));
+}
+
+/** An item's box in board coordinates (items inside frames are stored relative to the frame's corner). */
+function boardBox(item, byId, depth = 0) {
+  if (!Number.isFinite(item.x) || !Number.isFinite(item.y)) return null;
+  let cx = item.x;
+  let cy = item.y;
+  if (item.parentId && item.relativeTo === 'parent_top_left') {
+    const parent = byId.get(item.parentId);
+    const p = parent && depth < 6 ? boardBox(parent, byId, depth + 1) : null;
+    if (!p) return null;
+    cx = p.left + item.x;
+    cy = p.top + item.y;
+  }
+  const w = item.width || 0;
+  const h = item.height || 0;
+  return { left: cx - w / 2, top: cy - h / 2, right: cx + w / 2, bottom: cy + h / 2, area: w * h };
+}
+
+function overlapArea(a, b) {
+  const w = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+  const h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+  return w > 0 && h > 0 ? w * h : 0;
+}
+
+/** Ids of the photos that no other photo sits on top of. */
+async function topLayerIds(images, frames = []) {
+  const byId = new Map([...frames, ...images].map((item) => [item.id, item]));
+  const boxes = new Map(images.map((image) => [image.id, boardBox(image, byId)]));
+
+  // Candidate pairs: photo b lies at least half inside photo a.
+  const pairs = [];
+  for (const a of images) {
+    const A = boxes.get(a.id);
+    if (!A || !A.area) continue;
+    for (const b of images) {
+      const B = boxes.get(b.id);
+      if (a === b || !B || !B.area) continue;
+      if (overlapArea(A, B) >= COVER_SHARE * B.area) pairs.push([a, b]);
+    }
+  }
+  if (!pairs.length) return new Set(images.map((image) => image.id));
+
+  // Ask Miro which one is in front, only for photos that actually overlap.
+  const layer = new Map();
+  await mapLimit([...new Set(pairs.flat())], 6, async (item) => {
+    try {
+      layer.set(item.id, await item.getLayerIndex());
+    } catch {}
+  });
+
+  const beneath = new Set();
+  for (const [a, b] of pairs) {
+    const la = layer.get(a.id);
+    const lb = layer.get(b.id);
+    // If Miro can't say, assume the smaller photo is the one placed on top.
+    const bInFront = la !== undefined && lb !== undefined ? lb > la : boxes.get(b.id).area < boxes.get(a.id).area;
+    if (bInFront) beneath.add(a.id);
+  }
+  if (beneath.size) console.info(`[Pip] Skipping ${beneath.size} photo(s) that sit underneath other photos.`);
+  return new Set(images.filter((image) => !beneath.has(image.id)).map((image) => image.id));
 }
 
 async function runCatalog() {
@@ -545,7 +677,7 @@ async function runCatalog() {
     console.warn('[Pip] Image recognition could not load:', err);
     vision.state.failed = true;
     catalog.running = false;
-    hideSign();
+    setSign("Image recognition couldn't load, so Pip is searching names, labels and frame titles only.");
     ambient(line('catalogFailed'));
     return;
   }
@@ -555,7 +687,7 @@ async function runCatalog() {
     while (catalog.paused) await sleep(250);
     const image = catalog.queue.shift();
     try {
-      const entry = await vision.analyzeImage(await imageBlob(image));
+      const entry = await vision.analyzeImage(await readableImage(image));
       index.set(image.id, entry);
       if (!catalog.readOnly) {
         await image.setMetadata(CONFIG.metaKey, writeMeta(entry)).catch((err) => {
@@ -568,6 +700,7 @@ async function runCatalog() {
         await image.sync().catch(() => {});
       }
     } catch (err) {
+      catalog.failed++;
       console.warn(`[Pip] Couldn't catalogue image ${image.id}:`, err);
     }
     catalog.done++;
@@ -605,7 +738,7 @@ function plainText(value) {
 /** Camera-roll names like "IMG_2231.jpg" say nothing about the trim. */
 const meaningfulTitle = (title) => {
   const stem = (title || '').replace(/\.[a-z0-9]{2,4}$/i, '').trim();
-  return stem.replace(/[^a-z]/gi, '').length >= 3 && !/^(img|dsc|dscn|pxl|image|photo|screenshot|untitled|scan)[\W_]*\d/i.test(stem)
+  return stem.replace(/[^a-z]/gi, '').length >= 3 && !/^(img|dsc|dscn|pxl|image|photo|screenshot|untitled|scan)[\W_]*[a-z]?\d/i.test(stem)
     ? stem
     : '';
 };
@@ -628,6 +761,7 @@ function fieldsOf(item) {
         { key: 'title', text: item.title || '', weight: 1.4 },
         { key: 'alt', text: item.alt || '', weight: 1.2 },
         { key: 'tags', text: tagSearchText(tags), weight: 1.3 },
+        { key: 'frame', text: frameTitles.get(item.parentId) || '', weight: 0.8 },
       ];
     }
     default:
@@ -682,10 +816,12 @@ const dot = (a, b) => {
  *   lift: how much better it fits than the neutral baseline "a trim" (filters out nonsense queries)
  *   p:    share of the board's total match (softmax), so one clear winner scores high
  */
-function visualScores(queryVec, baseVec) {
+function visualScores(queryVec, baseVec, allowed) {
   const scores = new Map();
   if (!queryVec || !index.size) return scores;
-  const rows = [...index].map(([id, { embedding }]) => {
+  const entries = [...index].filter(([id]) => !allowed || allowed.has(id));
+  if (!entries.length) return scores;
+  const rows = entries.map(([id, { embedding }]) => {
     const sim = dot(queryVec, embedding);
     return { id, sim, lift: baseVec ? sim - dot(baseVec, embedding) : 0 };
   });
@@ -705,7 +841,7 @@ async function baselineVector() {
 function rankItems(items, query, queryVec, baseVec) {
   const phrase = fold(query).replace(/\s+/g, ' ').trim();
   const tokens = tokenize(query);
-  const visual = visualScores(queryVec, baseVec);
+  const visual = visualScores(queryVec, baseVec, new Set(items.map((item) => item.id)));
   const { floor, minLift, weight } = CONFIG.semantic;
 
   let finds = items
@@ -750,9 +886,11 @@ function describe(find, query) {
     const tags = index.get(item.id)?.tags || [];
     const title = meaningfulTitle(item.title);
     const base = tags.length ? describeTags(tags) : 'a trim photo';
-    if (title) return `${base} called "${snippet(title, query, 40)}"`;
-    if (!tags.length && item.alt) return `a photo of "${snippet(item.alt, query, 40)}"`;
-    return base;
+    const frame = frameTitles.get(item.parentId);
+    const where = frame ? ` on the "${snippet(frame, query, 30)}" frame` : '';
+    if (title) return `${base} called "${snippet(title, query, 40)}"${where}`;
+    if (!tags.length && item.alt) return `a photo of "${snippet(item.alt, query, 40)}"${where}`;
+    return `${base}${where}`;
   }
   const quote = `"${snippet(find.text || '', query, 44)}"`;
   switch (item.type) {
@@ -924,13 +1062,19 @@ async function runSearch(raw) {
   say(line('searching', { query }));
 
   let items;
+  let frames;
   let queryVec;
   try {
-    [items, queryVec] = await Promise.all([
+    [items, frames, queryVec] = await Promise.all([
       miro.board.get({ type: CONFIG.searchTypes }),
+      miro.board.get({ type: 'frame' }).catch(() => []),
       queryVector(query, 1500),
       sleep(reduceMotion ? 0 : 700),
     ]);
+    rememberFrames(frames);
+    // Only photos on the top layer count; everything else on the board is searched as usual.
+    const top = await topLayerIds(items.filter((item) => item.type === 'image'), frames);
+    items = items.filter((item) => item.type !== 'image' || top.has(item.id));
   } catch (err) {
     console.error('[Pip] Search failed:', err);
     finishSearching();
@@ -973,7 +1117,8 @@ async function offer(finds, total, flow) {
   let i = 0;
   let wrapped = false;
   // "Sure" = the words or tags matched; otherwise Pip is going by how the photos look.
-  const sure = finds[0].keyword && finds[0].coverage === 1;
+  // How Pip phrases it: every word matched, some words matched, or going by how the photos look.
+  const confidence = !finds[0].keyword ? 'guess' : finds[0].coverage === 1 ? 'sure' : 'partial';
   body.mood('happy');
   popEmote('!');
   body.hop();
@@ -985,7 +1130,8 @@ async function offer(finds, total, flow) {
     let intro;
     if (i > 0) intro = line('next', { thing });
     else if (wrapped) intro = line('wrap', { thing });
-    else if (sure) intro = line(total === 1 ? 'foundOne' : 'foundMany', { thing, count: total });
+    else if (confidence === 'sure') intro = line(total === 1 ? 'foundOne' : 'foundMany', { thing, count: total });
+    else if (confidence === 'partial') intro = line(total === 1 ? 'partialOne' : 'partialMany', { thing, count: total });
     else intro = line(total === 1 ? 'guessOne' : 'guessMany', { thing, count: total });
 
     const finished = await say(`${intro} ${line('askCloser')}`, { reveal: find.item });
