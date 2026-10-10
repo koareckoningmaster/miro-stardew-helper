@@ -8,7 +8,7 @@ A 16-bit shopkeeper who lives in your Miro board's side panel. Pip greets everyo
 
 - **Greets people as they arrive.** On the board you choose as his home, Pip's panel opens for everyone who comes in, and he says hello by name, then asks what he can help them find today. On other boards he stays out of the way until someone clicks his icon.
 - **Listens when you click him.** A search box opens inside his dialogue box. Type a word or a loose description.
-- **Actually looks at your trims.** Pip uses in-browser image recognition (a fashion-trained CLIP model) to tag every trim photo on the board by color and type, such as *lace, rickrack, pom-pom, sequin, velvet ribbon* and 25 more. He saves those tags on the board, so it only happens once per image and every visitor benefits. iPhone **HEIC** photos work too: Pip converts them in the browser.
+- **Actually looks at your trims.** Pip uses in-browser image recognition (a fashion-trained CLIP model) to tag every trim photo on the board by color and type, such as *lace, rickrack, pom-pom, sequin, velvet ribbon* and 25 more. He saves what he learns on the board itself, so each photo is only ever looked at once, and every visitor's Pip is ready instantly on reload. iPhone **HEIC** photos work too: Pip converts them in the browser.
 - **Only looks at the top layer.** Photos that have another photo sitting on top of them, like backdrops behind your frames or old photos stacked under new ones, are ignored. The name of the frame a photo sits on is searchable too, so a photo on a frame called "Bridal Lace" turns up for "bridal".
 - **Finds and shows.** He holds up the best match, asks if you'd like a closer look, and zooms the board to it. You can flip through other matches or click any result directly.
 - **Has some life to him.** He blinks, breathes and talks. When you search, he ducks behind his counter and rummages, tossing spools, buttons and ribbon over the edge, then comes back up gripping a square frame that shows the trim he found as a sharp, full-resolution photo. Ask for the next one and he puts it back under the desk and pulls up another. The city outside the atelier windows follows the time of day.
@@ -143,7 +143,8 @@ Pip tells you which kind of match he found: "Got one" when every word matched, "
 - **No server, no tracking.** Pip is a static site. There's no backend, database, analytics or login.
 - **Photos never leave the browser.** Image recognition and HEIC conversion run on the viewer's own computer. The browser downloads the Transformers.js library from jsDelivr, the FashionCLIP model from Hugging Face (about 150 MB, cached after the first time), and, only if HEIC photos turn up, the heic2any converter from jsDelivr.
 - **`boards:read`:** lets Pip list board items and read trim photos so he can search and tag them.
-- **`boards:write`:** lets Pip save his tags and a compact image fingerprint on each photo as *app metadata*. Only this app can see that data; it doesn't change how the photo looks. People with view-only access can still search; Pip keeps the tags in memory for their session.
+- **`boards:write`:** lets Pip save his catalogue (tags plus a compact image fingerprint per photo) in two native Miro places: the board's **app storage**, which loads the whole catalogue in a few calls, and each photo's **app metadata**, which travels with the photo when a board is duplicated. Only this app can see that data, and it doesn't change how the photos look.
+- **This browser:** Pip also keeps a copy of the catalogue in your browser (IndexedDB). Reloads are instant, and it still works for people with view-only access, who can't save to the board.
 
 ---
 
@@ -157,6 +158,7 @@ Pip tells you which kind of match he found: "Got one" when every word matched, "
 | "Loading image recognition…" on first use | The model is downloading once for this browser. Later visits load it from the cache. |
 | Keyword search works, but describing a trim doesn't | The network may block `cdn.jsdelivr.net` or `huggingface.co`. Pip falls back to names, labels and existing tags. |
 | He suggests trims that don't match, or misses ones that do | Tune `CONFIG.semantic` in `app.js`, or add synonyms in `trims.js`. |
+| He seems to catalogue everything again after a reload | His sign should say "N trims ready" within a second. If it says "saved on this computer only", Miro refused to save to the board. Check you have edit access, and look in the browser console (F12) for lines starting with `[Pip]`. |
 | His sign says some photos "couldn't be read" | Those files are damaged or in an unusual format. Re-upload them as JPEG or PNG. |
 | A trim photo is being skipped | Another photo is sitting on top of it. Move it out from under the other photo, or bring it to the front. |
 | Your changes don't appear after pushing | GitHub Pages takes a minute or two to update. Then hard-refresh the board (Ctrl/Cmd + Shift + R). |

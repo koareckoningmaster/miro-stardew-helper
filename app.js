@@ -827,12 +827,17 @@ function createVision() {
     if (data.type === 'progress') {
       state.percent = data.percent;
       state.loading = true;
-      if (!catalog.running || !state.visionReady) setSign(`Loading image recognition: ${data.percent}%`, data.percent / 100);
+      state.loadStart ??= performance.now();
+      // Reloading from the browser's cache takes a moment; only show the sign for a real download.
+      const slow = performance.now() - state.loadStart > 1500;
+      if (slow && (!catalog.running || !state.visionReady)) setSign(`Loading image recognition: ${data.percent}%`, data.percent / 100);
       return;
     }
     if (data.type === 'ready') {
       state[`${data.part}Ready`] = true;
       state.loading = false;
+      state.loadStart = null;
+      if (!catalog.running && signText.textContent.startsWith('Loading')) hideSign(600);
       return;
     }
     const job = pending.get(data.id);
@@ -873,7 +878,7 @@ const visionUsable = () => !vision.state.failed && typeof vision.embedText === '
    who opens Pip afterwards gets instant, recognition-powered search. */
 
 const index = new Map(); // image id -> { tags: string[], embedding: Float32Array }
-const catalog = { queue: [], running: false, paused: false, readOnly: false, done: 0, total: 0, failed: 0, skipped: 0 };
+const catalog = { queue: [], running: false, paused: false, done: 0, total: 0, failed: 0, skipped: 0, analyzed: 0 };
 
 function packEmbedding(vec) {
   let max = 0;
@@ -908,6 +913,138 @@ function writeMeta(entry) {
   return { v: 1, model: VISION_MODEL.tag, tags: entry.tags, ...packEmbedding(entry.embedding) };
 }
 
+/* ═════════════════════════ Saving the catalogue ═════════════════════════
+   Pip saves what he learns in three places, so reloading never means cataloguing again:
+   1. The board's own storage (a Miro "storage collection"), shared by everyone on the board.
+      The whole catalogue loads in a few calls instead of one call per photo.
+   2. Each photo's app metadata, which travels with the photo if the board is duplicated.
+   3. This browser (IndexedDB): instant, and it still works for people who can't edit the board. */
+
+const STORE = { collection: 'pip-catalog', chunks: 32, flushMs: 2000 };
+let boardId = 'unknown';
+const savedCatalog = new Map(); // photo id -> { t: tags, e: fingerprint, s: scale }
+const save = { dirty: new Set(), timer: null, storageFailures: 0, storageOk: true, metaFailures: 0, metaOk: true, lastError: '' };
+
+const packEntry = (entry) => ({ t: entry.tags, ...packEmbedding(entry.embedding) });
+function unpackEntry(packed) {
+  try {
+    return { tags: Array.isArray(packed.t) ? packed.t : [], embedding: unpackEmbedding(packed.e, packed.s) };
+  } catch {
+    return null;
+  }
+}
+
+/** Which storage key a photo lives under (spreads ~2,000 photos across 32 keys of up to 64 KB each). */
+function chunkOf(id) {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619);
+  return (h >>> 0) % STORE.chunks;
+}
+
+const boardStorage = () => (miro.board.storage?.collection ? miro.board.storage.collection(STORE.collection) : null);
+
+const localStore = {
+  db: null,
+  open() {
+    this.db ??= new Promise((resolve) => {
+      try {
+        const req = indexedDB.open('pip-trim-finder', 1);
+        req.onupgradeneeded = () => req.result.createObjectStore('catalog');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve(null);
+      } catch {
+        resolve(null);
+      }
+    });
+    return this.db;
+  },
+  async read() {
+    const db = await this.open();
+    if (!db) return null;
+    return new Promise((resolve) => {
+      const req = db.transaction('catalog').objectStore('catalog').get(boardId);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+    });
+  },
+  async write(value) {
+    const db = await this.open();
+    if (!db) return;
+    await new Promise((resolve) => {
+      const tx = db.transaction('catalog', 'readwrite');
+      tx.objectStore('catalog').put(value, boardId);
+      tx.oncomplete = tx.onerror = tx.onabort = () => resolve();
+    });
+  },
+};
+
+/** Everything saved so far, from this browser and the board's storage, in one quick batch. */
+async function loadSavedCatalog() {
+  const coll = boardStorage();
+  const [local, chunks] = await Promise.all([
+    localStore.read().catch(() => null),
+    coll ? Promise.all(Array.from({ length: STORE.chunks }, (_, i) => coll.get(`chunk-${i}`).catch(() => undefined))) : [],
+  ]);
+  for (const source of [local, ...chunks]) {
+    if (source?.m !== VISION_MODEL.tag || !source.items) continue;
+    for (const [id, packed] of Object.entries(source.items)) savedCatalog.set(id, packed);
+  }
+  return savedCatalog;
+}
+
+/** Remember a catalogued photo everywhere (board storage and this browser in batches, the photo right away). */
+function persist(image, entry, { onPhoto = true } = {}) {
+  savedCatalog.set(image.id, packEntry(entry));
+  save.dirty.add(chunkOf(image.id));
+  clearTimeout(save.timer);
+  save.timer = setTimeout(flushSaves, STORE.flushMs);
+  if (onPhoto) saveOnPhoto(image, entry);
+}
+
+async function flushSaves() {
+  clearTimeout(save.timer);
+  save.timer = null;
+  const tag = VISION_MODEL.tag;
+  localStore.write({ m: tag, items: Object.fromEntries(savedCatalog) }).catch(() => {});
+
+  const coll = boardStorage();
+  const dirty = [...save.dirty];
+  save.dirty.clear();
+  if (!coll || !save.storageOk) return;
+  for (const i of dirty) {
+    const key = `chunk-${i}`;
+    try {
+      // Merge with whatever teammates saved in the meantime, then write it back.
+      const current = await coll.get(key);
+      const items = current?.m === tag && current.items ? current.items : {};
+      for (const [id, packed] of savedCatalog) if (chunkOf(id) === i) items[id] = packed;
+      await coll.set(key, { m: tag, items });
+      save.storageFailures = 0;
+    } catch (err) {
+      save.lastError = err?.message || String(err);
+      console.warn('[Pip] Could not save to the board storage:', save.lastError);
+      if (++save.storageFailures >= 3) save.storageOk = false; // stop retrying this session
+    }
+  }
+}
+
+/** Tags on the photo itself, retried a couple of times, so one hiccup doesn't stop all saving. */
+async function saveOnPhoto(image, entry) {
+  if (!save.metaOk) return;
+  for (const wait of [0, 1500, 4000]) {
+    if (wait) await sleep(wait);
+    try {
+      await image.setMetadata(CONFIG.metaKey, writeMeta(entry));
+      save.metaFailures = 0;
+      return;
+    } catch (err) {
+      save.lastError = err?.message || String(err);
+    }
+  }
+  console.info(`[Pip] Could not save tags on photo ${image.id}:`, save.lastError);
+  if (++save.metaFailures >= 3) save.metaOk = false; // e.g. view-only access
+}
+
 function renderCatalogSign() {
   if (catalog.running && vision.state.visionReady) {
     setSign(`Cataloguing trims: ${catalog.done} of ${catalog.total}`, catalog.total ? catalog.done / catalog.total : 0);
@@ -915,7 +1052,9 @@ function renderCatalogSign() {
     const notes = [];
     if (catalog.failed) notes.push(`${catalog.failed} couldn't be read`);
     if (catalog.skipped) notes.push(`${catalog.skipped} underneath other photos skipped`);
-    setSign(`${index.size} trims catalogued${notes.length ? ` (${notes.join(', ')})` : ''}`);
+    if (catalog.analyzed && save.storageFailures && save.lastError) notes.push('saved on this computer only');
+    const verb = catalog.analyzed ? 'catalogued' : 'ready';
+    setSign(`${index.size} trims ${verb}${notes.length ? ` (${notes.join(', ')})` : ''}`);
     hideSign(notes.length ? 9000 : 2500);
   }
 }
@@ -940,15 +1079,30 @@ async function scanBoard() {
   catalog.done = 0;
   catalog.failed = 0;
   catalog.queue = [];
-  await mapLimit(onTop, 6, async (image) => {
-    const entry = readMeta(await image.getMetadata(CONFIG.metaKey).catch(() => undefined));
+
+  const saved = await loadSavedCatalog();
+  const unknown = [];
+  for (const image of onTop) {
+    const entry = saved.has(image.id) ? unpackEntry(saved.get(image.id)) : null;
     if (entry) {
       index.set(image.id, entry);
       catalog.done++;
     } else {
+      unknown.push(image);
+    }
+  }
+  // Photos the saved catalogue doesn't know (e.g. on a duplicated board) may carry tags themselves.
+  await mapLimit(unknown, 6, async (image) => {
+    const entry = readMeta(await image.getMetadata(CONFIG.metaKey).catch(() => undefined));
+    if (entry) {
+      index.set(image.id, entry);
+      catalog.done++;
+      persist(image, entry, { onPhoto: false }); // add it to the saved catalogue for next time
+    } else {
       catalog.queue.push(image);
     }
   });
+  console.info(`[Pip] ${catalog.done} of ${catalog.total} trims already catalogued; ${catalog.queue.length} new.`);
   if (catalog.queue.length) runCatalog();
   else renderCatalogSign();
 }
@@ -1101,13 +1255,9 @@ async function runCatalog() {
     try {
       const entry = await vision.analyzeImage(await readableImage(image));
       index.set(image.id, entry);
-      if (!catalog.readOnly) {
-        await image.setMetadata(CONFIG.metaKey, writeMeta(entry)).catch((err) => {
-          catalog.readOnly = true; // e.g. view-only access: keep tags in memory for this session
-          console.info('[Pip] Tags kept in memory only (no write access):', err?.message || err);
-        });
-      }
-      if (CONFIG.writeAltText && !catalog.readOnly && !image.alt) {
+      catalog.analyzed++;
+      persist(image, entry);
+      if (CONFIG.writeAltText && save.metaOk && !image.alt) {
         image.alt = cap(describeTags(entry.tags, { article: false }));
         await image.sync().catch(() => {});
       }
@@ -1119,6 +1269,7 @@ async function runCatalog() {
     renderCatalogSign();
   }
   catalog.running = false;
+  await flushSaves(); // save the last batch right away
   renderCatalogSign();
   if (index.size) ambient(line('catalogDone', { count: index.size }));
 }
@@ -1725,11 +1876,13 @@ async function boot() {
     return;
   }
 
-  const [panelData, user, online] = await Promise.all([
+  const [panelData, user, online, info] = await Promise.all([
     miro.board.ui.getPanelData().catch(() => undefined),
     whoAmI(),
     miro.board.getOnlineUsers().catch(() => []),
+    Promise.resolve().then(() => miro.board.getInfo()).catch(() => ({})),
   ]);
+  boardId = info?.id || 'unknown';
   me = user;
   knownUserIds ??= new Set(online.map((u) => u.id));
 
@@ -1750,6 +1903,7 @@ async function boot() {
   miro.board.ui.on('items:delete', onItemsDeleted);
 
   vision = createVision();
+  if (visionUsable()) vision.warm(['text']).catch(() => {}); // so the first search doesn't wait
   scanBoard();
 }
 
