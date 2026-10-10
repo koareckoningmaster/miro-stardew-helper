@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pip, the atelier's trim finder</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600&family=Press+Start+2P&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Every Miro iframe (headless, panel, modal) loads the SDK itself. -->
+    <script src="https://miro.com/app/static/sdk/v2/miro.js"></script>
+
+    <style>
+      :root {
+        --u: 4px; /* one "pixel" of the UI frame */
+
+        /* Atelier palette: black lacquer, gold trim, marble cream */
+        --ink: #0b090d;
+        --wood: #1d1a21;       /* frame rims: black lacquer */
+        --wood-hi: #c9a24a;    /* gold bevel, lit side */
+        --wood-lo: #8f6f2c;    /* gold bevel, shaded side */
+        --paper: #f3eee4;      /* marble cream */
+        --paper-hi: #fffaf2;
+        --paper-lo: #d8cdbb;
+        --text: #2a2328;
+        --text-soft: #6b5f58;
+        --leaf: #c9a24a;       /* accents are gold here */
+        --leaf-hi: #f0cf72;
+        --leaf-lo: #7a5c1e;
+        --plank: #25222a;      /* page background: dark stone courses */
+        --plank-seam: #1a171e;
+        --alert: #9c3343;
+
+        --font-body: "Pixelify Sans", "Trebuchet MS", sans-serif;
+        --font-plate: "Press Start 2P", "Courier New", monospace;
+        color-scheme: light;
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+      }
+
+      body {
+        background: repeating-linear-gradient(180deg, var(--plank) 0 26px, var(--plank-seam) 26px 28px);
+        color: var(--text);
+        font-family: var(--font-body);
+        font-size: 18px;
+      }
+
+      .app {
+        display: flex;
+        flex-direction: column;
+        max-width: 400px;
+        margin: 0 auto;
+        padding: 18px 14px 32px;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+
+      /* ---------- The pixel frame ----------
+         Stacked hard-edged box-shadows build a wooden rim with stepped corners:
+         bevel → wood → ink outline → drop shadow. Recolor with the --fill-* / --rim-* tokens. */
+      .frame {
+        --fill: var(--paper);
+        --fill-hi: var(--paper-hi);
+        --fill-lo: var(--paper-lo);
+        --rim: var(--wood);
+        --rim-hi: var(--wood-hi);
+        --rim-lo: var(--wood-lo);
+        position: relative;
+        background: var(--fill);
+        box-shadow:
+          inset var(--u) var(--u) 0 0 var(--fill-hi),
+          inset calc(var(--u) * -1) calc(var(--u) * -1) 0 0 var(--fill-lo),
+          0 calc(var(--u) * -1) 0 0 var(--rim-hi),
+          calc(var(--u) * -1) 0 0 0 var(--rim-hi),
+          0 var(--u) 0 0 var(--rim-lo),
+          var(--u) 0 0 0 var(--rim-lo),
+          0 calc(var(--u) * -2) 0 0 var(--rim),
+          0 calc(var(--u) * 2) 0 0 var(--rim),
+          calc(var(--u) * -2) 0 0 0 var(--rim),
+          calc(var(--u) * 2) 0 0 0 var(--rim),
+          var(--u) var(--u) 0 0 var(--rim),
+          calc(var(--u) * -1) var(--u) 0 0 var(--rim),
+          var(--u) calc(var(--u) * -1) 0 0 var(--rim),
+          calc(var(--u) * -1) calc(var(--u) * -1) 0 0 var(--rim),
+          0 calc(var(--u) * -3) 0 0 var(--ink),
+          0 calc(var(--u) * 3) 0 0 var(--ink),
+          calc(var(--u) * -3) 0 0 0 var(--ink),
+          calc(var(--u) * 3) 0 0 0 var(--ink),
+          calc(var(--u) * 2) var(--u) 0 0 var(--ink),
+          var(--u) calc(var(--u) * 2) 0 0 var(--ink),
+          calc(var(--u) * -2) var(--u) 0 0 var(--ink),
+          calc(var(--u) * -1) calc(var(--u) * 2) 0 0 var(--ink),
+          calc(var(--u) * 2) calc(var(--u) * -1) 0 0 var(--ink),
+          var(--u) calc(var(--u) * -2) 0 0 var(--ink),
+          calc(var(--u) * -2) calc(var(--u) * -1) 0 0 var(--ink),
+          calc(var(--u) * -1) calc(var(--u) * -2) 0 0 var(--ink),
+          0 calc(var(--u) * 5) 0 0 rgba(20, 10, 4, 0.35);
+      }
+
+      /* ---------- Atelier scene ----------
+         A 96×96 pixel canvas (atelier backdrop, Pip's animated portrait, counter) drawn
+         at 3× with hard pixel edges. */
+      .scene {
+        --fill-hi: rgba(255, 255, 255, 0.18);
+        --fill-lo: rgba(0, 0, 0, 0.12);
+        align-self: center;
+        width: min(100%, 288px);
+        aspect-ratio: 1;
+        padding: 0;
+      }
+      .shop {
+        display: block;
+        width: 100%;
+        height: 100%;
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+      }
+
+      /* Invisible hit area over Pip himself: click him to search */
+      .pip {
+        position: absolute;
+        left: 16.5%;
+        top: 22%;
+        width: 61%;
+        height: 61%;
+        padding: 0;
+        border: 0;
+        background: none;
+        cursor: pointer;
+      }
+      .pip:focus-visible {
+        outline: 2px dashed #fff4d2;
+        outline-offset: 2px;
+      }
+
+      /* Emote bubble ("!" / "?") that pops beside his cap */
+      .emote {
+        position: absolute;
+        left: 67%;
+        top: 17%;
+        min-width: 24px;
+        padding: 6px 6px 4px;
+        font-family: var(--font-plate);
+        font-size: 11px;
+        line-height: 1;
+        text-align: center;
+        color: var(--alert);
+        background: #fff;
+        box-shadow: 0 -3px 0 0 var(--ink), 0 3px 0 0 var(--ink), -3px 0 0 0 var(--ink), 3px 0 0 0 var(--ink);
+        opacity: 0;
+        transform-origin: 0% 120%;
+        pointer-events: none;
+      }
+      .emote::after {
+        content: "";
+        position: absolute;
+        left: 2px;
+        top: 100%;
+        width: 6px;
+        height: 6px;
+        margin-top: 3px;
+        background: var(--ink);
+        clip-path: polygon(0 0, 100% 0, 0 100%);
+      }
+      .emote.is-on { animation: pop 2.2s steps(1) forwards; }
+      @keyframes pop {
+        0% { opacity: 1; transform: scale(0.5); }
+        6% { transform: scale(1.25); }
+        12% { transform: scale(1); }
+        88% { opacity: 1; transform: scale(1); }
+        100% { opacity: 0; }
+      }
+
+      .nameplate {
+        --u: 3px;
+        align-self: flex-start;
+        z-index: 2;
+        margin: -12px 0 0 20px;
+        padding: 7px 12px 5px;
+        font-family: var(--font-plate);
+        font-size: 11px;
+        letter-spacing: 1px;
+      }
+
+      /* ---------- Dialogue box ---------- */
+      .dialog {
+        margin-top: 22px;
+        padding: 16px 18px 18px;
+        min-height: calc(4 * 1.35em + 34px);
+        font-size: 19px;
+        line-height: 1.35;
+      }
+      .dialog.is-typing { cursor: pointer; }
+      .dialog__arrival {
+        margin: 0 0 6px;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--leaf-lo);
+      }
+      .dialog__body {
+        display: flex;
+        gap: 14px;
+        align-items: flex-start;
+      }
+      .dialog__text {
+        flex: 1;
+        margin: 0;
+        overflow-wrap: anywhere;
+      }
+      .dialog__hint {
+        margin: 12px 0 0;
+        font-size: 14px;
+        color: var(--text-soft);
+      }
+
+      /* The trim Pip "holds up" when he finds it */
+      .reveal {
+        --u: 3px;
+        --fill: #fffdf8;
+        flex: none;
+        width: 76px;
+        height: 76px;
+        margin: 4px 4px 0 2px;
+        padding: 5px;
+        display: grid;
+        place-items: center;
+      }
+      .reveal img {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+      }
+
+      .choices {
+        display: grid;
+        gap: 2px;
+        margin-top: 12px;
+      }
+      .choice {
+        position: relative;
+        padding: 5px 8px 5px 26px;
+        border: 0;
+        background: none;
+        color: var(--text);
+        font: inherit;
+        font-size: 18px;
+        text-align: left;
+        cursor: pointer;
+      }
+      .choice::before {
+        content: "";
+        position: absolute;
+        left: 8px;
+        top: 50%;
+        width: 8px;
+        height: 12px;
+        margin-top: -6px;
+        background: var(--ink);
+        clip-path: polygon(0 0, 100% 50%, 0 100%);
+        visibility: hidden;
+      }
+      .choice:hover,
+      .choice:focus { outline: none; background: rgba(201, 162, 74, 0.28); }
+      .choice:hover::before,
+      .choice:focus::before { visibility: visible; animation: nudge 0.7s steps(1) infinite; }
+      @keyframes nudge { 0% { transform: translateX(0); } 50% { transform: translateX(3px); } }
+
+      /* RPG text entry, inside the dialogue box */
+      .ask {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 14px;
+        padding: 6px 4px 6px 10px;
+        background: #fbf8f1;
+        box-shadow: inset 3px 3px 0 0 var(--paper-lo), inset -3px -3px 0 0 #ffffff, 0 0 0 3px var(--wood-lo);
+      }
+      .ask:focus-within { box-shadow: inset 3px 3px 0 0 var(--paper-lo), inset -3px -3px 0 0 #ffffff, 0 0 0 3px var(--leaf); }
+      .ask__caret {
+        flex: none;
+        width: 8px;
+        height: 12px;
+        background: var(--leaf-lo);
+        clip-path: polygon(0 0, 100% 50%, 0 100%);
+      }
+      .ask__input {
+        flex: 1;
+        min-width: 0;
+        padding: 6px 0;
+        border: 0;
+        outline: none;
+        background: transparent;
+        color: var(--text);
+        font: inherit;
+        font-size: 18px;
+        -webkit-appearance: none;
+        appearance: none;
+      }
+      .ask__input::placeholder { color: var(--text-soft); opacity: 0.75; }
+      .ask__input::-webkit-search-cancel-button { -webkit-appearance: none; }
+      .ask__go {
+        flex: none;
+        margin: 3px;
+        padding: 9px 9px 7px;
+        border: 0;
+        background: var(--leaf);
+        color: #1d1a21;
+        font-family: var(--font-plate);
+        font-size: 9px;
+        cursor: pointer;
+        box-shadow:
+          inset 3px 3px 0 0 var(--leaf-hi), inset -3px -3px 0 0 var(--leaf-lo),
+          0 -3px 0 0 var(--ink), 0 3px 0 0 var(--ink), -3px 0 0 0 var(--ink), 3px 0 0 0 var(--ink);
+      }
+      .ask__go:active { transform: translateY(2px); }
+      .ask__go:focus-visible { outline: 2px dashed var(--ink); outline-offset: 6px; }
+
+      /* ---------- Status sign (model download / cataloguing) ---------- */
+      .sign {
+        --u: 3px;
+        --fill: #e7dfd0;
+        margin: 26px 0 0;
+        padding: 8px 12px;
+        font-size: 14px;
+        color: var(--text);
+      }
+      .sign__bar {
+        display: none;
+        height: 8px;
+        margin-top: 6px;
+        background: var(--paper-lo);
+        box-shadow: inset 0 0 0 2px var(--wood-lo);
+      }
+      .sign.has-bar .sign__bar { display: block; }
+      .sign__fill {
+        display: block;
+        width: 0;
+        height: 100%;
+        background: var(--leaf);
+        box-shadow: inset 0 2px 0 0 var(--leaf-hi);
+      }
+
+      /* ---------- Finds ---------- */
+      .finds { margin-top: 32px; }
+      .finds__title {
+        margin: 0 0 18px 4px;
+        color: var(--paper);
+        font-family: var(--font-plate);
+        font-size: 10px;
+        font-weight: normal;
+        line-height: 1.5;
+      }
+      .finds__list {
+        display: grid;
+        gap: 20px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .find {
+        --u: 3px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        width: 100%;
+        padding: 8px 12px 8px 8px;
+        border: 0;
+        color: var(--text);
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+      .find:hover,
+      .find.is-active { --rim: var(--leaf); --rim-hi: var(--leaf-hi); --rim-lo: var(--leaf-lo); }
+      .find:active { transform: translateY(2px); }
+      .find:focus-visible { outline: 2px dashed var(--paper-hi); outline-offset: 12px; }
+      .find__slot {
+        flex: none;
+        display: grid;
+        place-items: center;
+        width: 48px;
+        height: 48px;
+        background: #fffaf0;
+        box-shadow: inset 0 0 0 2px var(--paper-lo);
+        overflow: hidden;
+      }
+      .find__slot img { max-width: 44px; max-height: 44px; object-fit: contain; }
+      .find__slot--sticky_note::before,
+      .find__slot--text::before,
+      .find__slot--card::before,
+      .find__slot--app_card::before,
+      .find__slot--shape::before {
+        content: "";
+        width: 24px;
+        height: 24px;
+        background: #f6d55c;
+        box-shadow: inset 0 0 0 3px var(--ink);
+      }
+      .find__slot--text::before { background: var(--paper-hi); }
+      .find__slot--card::before,
+      .find__slot--app_card::before { background: #fff7e6; box-shadow: inset 0 0 0 3px var(--ink), inset 0 6px 0 0 #d9534f; }
+      .find__slot--shape::before { background: #6cbf4f; }
+      .find__body { display: grid; gap: 1px; min-width: 0; }
+      .find__kind { font-size: 13px; color: var(--text-soft); }
+      .find__text {
+        display: -webkit-box;
+        overflow: hidden;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        font-size: 16px;
+        line-height: 1.25;
+        overflow-wrap: anywhere;
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .choice:hover::before,
+        .choice:focus::before { animation: none; }
+        .emote.is-on { animation: none; opacity: 1; }
+      }
+    </style>
+  </head>
+
+  <body>
+    <main class="app">
+      <section class="scene frame" id="scene" data-time="day">
+        <!-- Pip's atelier: backdrop + animated portrait + counter, painted by app.js -->
+        <canvas class="shop" id="shop" width="96" height="96" aria-hidden="true"></canvas>
+        <button class="pip" id="pipButton" type="button" aria-label="Talk to Pip to search for a trim"></button>
+        <span class="emote" id="emote" aria-hidden="true">!</span>
+      </section>
+
+      <div class="nameplate frame" aria-hidden="true">Pip</div>
+
+      <section class="dialog frame" id="dialog" aria-label="Pip says">
+        <p class="dialog__arrival" id="arrival" hidden></p>
+        <div class="dialog__body">
+          <figure class="reveal frame" id="reveal" hidden>
+            <img id="revealImg" alt="The trim Pip found" />
+          </figure>
+          <!-- Typewriter text is visual only; screen readers get the full line from #live. -->
+          <p class="dialog__text" id="dialogText" aria-hidden="true"></p>
+        </div>
+        <p class="sr-only" id="live" aria-live="polite"></p>
+
+        <div class="choices" id="choices" role="group" aria-label="Your answer" hidden></div>
+
+        <form class="ask" id="askForm" role="search" autocomplete="off" hidden>
+          <label class="sr-only" for="query">Describe the trim or type a word</label>
+          <span class="ask__caret" aria-hidden="true"></span>
+          <input
+            class="ask__input"
+            id="query"
+            type="search"
+            placeholder="ivory scalloped lace…"
+            enterkeyhint="search"
+            spellcheck="false"
+          />
+          <button class="ask__go" type="submit">Find</button>
+        </form>
+
+        <p class="dialog__hint" id="hint" hidden>Click Pip to search the board.</p>
+      </section>
+
+      <div class="sign frame" id="sign" role="status" hidden>
+        <span id="signText"></span>
+        <span class="sign__bar" aria-hidden="true"><span class="sign__fill" id="signFill"></span></span>
+      </div>
+
+      <section class="finds" id="finds" aria-labelledby="findsTitle" hidden>
+        <h2 class="finds__title" id="findsTitle"></h2>
+        <ul class="finds__list" id="findsList"></ul>
+      </section>
+    </main>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

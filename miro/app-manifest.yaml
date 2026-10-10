@@ -1,0 +1,15 @@
+# Miro app manifest for Pip.
+# Paste this into Miro: Developer team → Your apps → (your app) → Edit in manifest.
+# Replace YOUR-GITHUB-USERNAME below with your GitHub username (and the repo name, if you renamed it).
+# For local testing instead, set sdkUri to http://localhost:3000 (Miro allows plain HTTP on localhost).
+appName: Pip – Trim Finder
+sdkVersion: SDK_V2
+sdkUri: https://YOUR-GITHUB-USERNAME.github.io/pip-trim-finder/
+scopes:
+  - boards:read   # list board items and read trim photos and their tags
+  - boards:write  # save Pip's auto-generated tags on each photo (private app metadata)
+icons:
+  colored: >-
+    <svg viewBox="0 0 24 24" width="48" height="48" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges"><path fill="#343358" d="M7 8h8v2h2v5H5v-5h2z"/><path fill="#434072" d="M7 10h4v2H7z"/><path fill="#19181a" d="M10 6h2v2h-2z"/><path fill="#28273f" d="M5 16h17v2H5z"/></svg>
+  outline: >-
+    <svg viewBox="0 0 24 24" width="48" height="48" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges" fill="currentColor"><path d="M10 6h2v2h-2zM7 8h8v2h2v5H5v-5h2zM5 16h17v2H5z"/></svg>

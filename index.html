@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Pip, the trim finder</title>
+    <!-- Headless entry point: Miro loads this invisibly whenever the board opens. -->
+    <script src="https://miro.com/app/static/sdk/v2/miro.js"></script>
+  </head>
+  <body>
+    <script>
+      // Pop Pip open for each person when they arrive on the board (once per browser tab).
+      const AUTO_OPEN_ON_ARRIVAL = true;
+
+      async function openPip(reason) {
+        try {
+          // Another app's panel can block ours; canOpenPanel() tells us before we try.
+          if (!(await miro.board.ui.canOpenPanel())) return false;
+          // `reason` lets the panel pick a first-visit greeting vs. a welcome-back line.
+          await miro.board.ui.openPanel({ url: 'app.html', data: { reason } });
+          return true;
+        } catch (err) {
+          console.warn('[Pip] Could not open the panel:', err);
+          return false;
+        }
+      }
+
+      // The cap icon in the apps toolbar always brings Pip back.
+      miro.board.ui.on('icon:click', async () => {
+        if (!(await openPip('icon'))) {
+          await miro.board.notifications.showInfo('A side panel is already open. Close it to talk to Pip.');
+        }
+      });
+
+      async function greetOnArrival() {
+        if (!AUTO_OPEN_ON_ARRIVAL) return;
+        let key = 'pip-greeted';
+        try {
+          key += `:${(await miro.board.getInfo()).id}`;
+        } catch {}
+        try {
+          if (sessionStorage.getItem(key)) return;
+          sessionStorage.setItem(key, '1');
+        } catch {} // storage can be blocked in third-party iframes; then Pip greets every load
+
+        await new Promise((resolve) => setTimeout(resolve, 1500)); // let the board UI finish loading
+        if (!(await openPip('arrival'))) {
+          // If a panel is already open, greet with a toast instead.
+          await miro.board.notifications.showInfo(
+            'Pip: Hello! What can I help you find today? Click the cap icon in the apps toolbar to search.'
+          );
+        }
+      }
+
+      greetOnArrival();
+    </script>
+  </body>
+</html>
