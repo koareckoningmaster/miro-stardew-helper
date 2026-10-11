@@ -9,8 +9,11 @@
  *   Finds   matches by keyword, tag or plain description, "holds up" the best one,
  *           asks if you'd like a closer look, then flies the viewport there with zoomTo().
  */
-import { LINES } from './lines.js';
-import { TAGGER_VERSION, VISION_MODEL, describeTags, tagSearchText } from './trims.js';
+// BUILD is stamped into every file name Squeak loads, so browsers can't keep serving an old copy
+// after you publish an update. It's also shown at the bottom of the panel.
+export const BUILD = '2026.10.10-a';
+import { LINES } from './lines.js?v=2026.10.10-a';
+import { TAGGER_VERSION, VISION_MODEL, describeTags, tagSearchText } from './trims.js?v=2026.10.10-a';
 
 /* ═════════════════════════ Config ═════════════════════════ */
 
@@ -23,6 +26,7 @@ const CONFIG = {
   writeAltText: false, // true = also fill empty image alt text with Squeak's tags (visible to everyone)
   syncEverySec: 60, // how often to check the board for photos teammates added or removed
   searchAt: 'shelves', // 'shelves' = walks back and searches the shelves; 'desk' = rummages under the counter
+  shelfActions: 1, // how many complete actions he does at the shelves (at least) before walking back
   semantic: {
     // A photo counts as a visual match only if the description fits it better than the
     // plain baseline "a trim" does (minLift) and clears an absolute floor. Raise these if
@@ -125,13 +129,13 @@ const homeToggle = $('homeToggle');
    Squeak's portrait (one of 12 frames: eyes × mouth), then the counter in front of him. */
 
 const ART = {
-  'back-morning': 'assets/atelier-morning.png',
-  'back-day': 'assets/atelier-day.png',
-  'back-evening': 'assets/atelier-evening.png',
-  'back-night': 'assets/atelier-night.png',
-  front: 'assets/counter.png',
-  portrait: 'assets/squeak-portrait.png', // 12 frames, 64×64 each: [open, closed, happy eyes] × [closed, o, open, grin mouth]
-  walk: 'assets/squeak-walk.png', // full-body frames for walking to the shelves and searching them
+  'back-morning': `assets/atelier-morning.png?v=${BUILD}`,
+  'back-day': `assets/atelier-day.png?v=${BUILD}`,
+  'back-evening': `assets/atelier-evening.png?v=${BUILD}`,
+  'back-night': `assets/atelier-night.png?v=${BUILD}`,
+  front: `assets/counter.png?v=${BUILD}`,
+  portrait: `assets/squeak-portrait.png?v=${BUILD}`, // 12 frames, 64×64 each: [open, closed, happy eyes] × [closed, o, open, grin mouth]
+  walk: `assets/squeak-walk.png?v=${BUILD}`, // full-body frames for walking to the shelves and searching them
 };
 
 /* Squeak's full-body frames (assets/squeak-walk.png), converted from the reference sprite sheets
@@ -179,6 +183,16 @@ const WALK_FRAMES = {
   toss: { x: 743, w: 21, h: 35, headX: 7.6, feetX: 8.1, handX: 18, handY: 10 },
   stand_back: { x: 765, w: 15, h: 36, headX: 6.8, feetX: 7.0 },
 };
+/** Things he does at the shelves. Each is a list of [frame, milliseconds, extra]. */
+const SEARCH_ACTIONS = {
+  reach: () => [['look_up', 360], ['reach_up', 640], ['examine', 620, 'hold'], ['toss', 380, 'toss']],
+  bend: () => [[pick(['look_left', 'look_right']), 300], ['bend', 780], ['examine', 600, 'hold'], ['toss', 380, 'toss']],
+  think: () => [['stand_back', 260], ['think', 950], [pick(['look_left', 'look_right']), 380]],
+  glance: () => [['look_left', 440], ['look_right', 440], ['stand_back', 220]],
+  browse: () => [['look_up', 560], ['stand_back', 320], ['reach_up', 520], ['stand_back', 200]],
+  doubleTake: () => [['examine', 520, 'hold'], ['think', 600], ['toss', 380, 'toss'], ['look_right', 360]],
+};
+
 const SHELF_PATH = {
   counterX: 48, // he turns from the middle of the counter…
   shelfMin: 38, // …and searches somewhere along the center shelving
@@ -770,28 +784,38 @@ const body = {
 
   /** A random series of things to do at the shelves, stepping along to a new spot between them. */
   async searchShelves(id) {
-    const ACTIONS = {
-      reach: () => [['look_up', 360], ['reach_up', 640], ['examine', 620, 'hold'], ['toss', 380, 'toss']],
-      bend: () => [[pick(['look_left', 'look_right']), 300], ['bend', 780], ['examine', 600, 'hold'], ['toss', 380, 'toss']],
-      think: () => [['stand_back', 260], ['think', 950]],
-      glance: () => [['look_left', 440], ['look_right', 440], ['stand_back', 220]],
-      browse: () => [['look_up', 560], ['stand_back', 320]],
-    };
-    let last = null;
+    this.actionsDone = 0;
     while (id === this.motionId && this.atShelves) {
-      const action = pick(Object.keys(ACTIONS).filter((a) => a !== last));
-      last = action;
-      for (const [frame, ms, extra] of ACTIONS[action]()) {
-        if (id !== this.motionId || !this.atShelves) return;
+      const action = this.nextAction();
+      this.inAction = true;
+      for (const [frame, ms, extra] of SEARCH_ACTIONS[action]()) {
+        if (id !== this.motionId || !this.atShelves) return void (this.inAction = false);
         setPose({ away: placeFrame(frame, this.spotX), handItem: extra === 'hold' ? pick(sprites.smallTrims) : null });
         if (extra === 'toss') tossFromHand();
         await sleep(ms * (0.85 + Math.random() * 0.3));
       }
+      this.inAction = false;
+      this.actionsDone++;
       if (id !== this.motionId || !this.atShelves) return;
       const { shelfMin, shelfMax } = SHELF_PATH;
       const dir = this.spotX < shelfMin + 5 ? 1 : this.spotX > shelfMax - 5 ? -1 : Math.random() < 0.5 ? -1 : 1;
       await this.stepAlong(id, Math.min(shelfMax, Math.max(shelfMin, this.spotX + dir * (4 + Math.random() * 6))));
     }
+  },
+
+  /** Actions come from a shuffled deck that carries over between searches, so every search plays
+      out differently and never opens with the same move as the last one. */
+  actionDeck: [],
+  lastAction: null,
+  nextAction() {
+    if (!this.actionDeck.length) {
+      const deck = Object.keys(SEARCH_ACTIONS).sort(() => Math.random() - 0.5);
+      if (deck[deck.length - 1] === this.lastAction) deck.unshift(deck.pop());
+      this.actionDeck = deck;
+    }
+    this.lastAction = this.actionDeck.pop();
+    console.debug(`[Squeak] at the shelves: ${this.lastAction}`);
+    return this.lastAction;
   },
 
   /** A few walking steps sideways along the shelf. */
@@ -806,6 +830,9 @@ const body = {
 
   /** Walk back from the shelves; with an item, raise it over the counter in the frame. */
   async returnFromShelves(item) {
+    // finish the current action, and do at least a couple, before walking back (up to ~5 s)
+    const until = performance.now() + 5000;
+    while (this.atShelves && (this.inAction || this.actionsDone < CONFIG.shelfActions) && performance.now() < until) await sleep(80);
     const id = ++this.motionId;
     this.atShelves = false;
     const held = item ? makeHeld(item) : null;
@@ -1069,7 +1096,7 @@ function createVision() {
   const state = { textReady: false, visionReady: false, failed: false, loading: false, percent: 0 };
   let worker;
   try {
-    worker = new Worker(new URL('./vision-worker.js', import.meta.url), { type: 'module' });
+    worker = new Worker(new URL(`./vision-worker.js?v=${BUILD}`, import.meta.url), { type: 'module' });
   } catch (err) {
     console.warn('[Squeak] Image recognition unavailable:', err);
     return { state: { ...state, failed: true } };
@@ -2059,6 +2086,14 @@ async function runSearch(raw) {
   if (PREVIEW && query) {
     hideAsk();
     popEmote('?');
+    if (CONFIG.searchAt === 'shelves' && !reduceMotion) {
+      say(line('searching', { query }));
+      body.goToShelves();
+      await sleep(2500);
+      if (flow !== flowId) return;
+      await body.comeBack();
+      if (flow !== flowId) return;
+    }
     await say(line('preview', { query }));
     showAsk();
     return endFlow(flow);
@@ -2085,7 +2120,7 @@ async function runSearch(raw) {
       miro.board.get({ type: CONFIG.searchTypes }),
       miro.board.get({ type: 'frame' }).catch(() => []),
       queryVector(query, 1500),
-      sleep(reduceMotion ? 0 : CONFIG.searchAt === 'shelves' ? 3200 : 2000), // time to see him search, even on small boards
+      sleep(reduceMotion ? 0 : 2000), // time to see him search, even on small boards
     ]);
     rememberFrames(frames);
     syncWithBoard(items.filter((item) => item.type === 'image')); // pick up teammates' changes
@@ -2303,6 +2338,9 @@ async function setupHomeSwitch() {
 /* ═════════════════════════ Boot ═════════════════════════ */
 
 async function boot() {
+  console.info(`[Squeak] build ${BUILD}`);
+  const buildTag = document.getElementById('build');
+  if (buildTag) buildTag.textContent = `Squeak build ${BUILD}`;
   setTimeOfDay();
   setInterval(setTimeOfDay, 5 * 60 * 1000);
   await loadArt();

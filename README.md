@@ -137,10 +137,12 @@ Squeak tells you which kind of match he found: "Got one" when every word matched
   - `'home'` (the default): only on ticked boards.
   - `'all'`: every board.
   - `'none'`: only when someone clicks his icon.
+- **What he does at the shelves:** `SEARCH_ACTIONS` in `app.js`. These are the moves he picks from: reach, bend, think, glance, browse and double-take. He draws them from a shuffled deck, so every search goes differently. `CONFIG.shelfActions` sets how many he completes before walking back.
 - **Where he searches:** `CONFIG.searchAt` in `app.js`. Use `'shelves'` (the default) to have him walk back and search the shelves, or `'desk'` to have him rummage under the counter.
 - **How often he checks for teammates' changes:** `CONFIG.syncEverySec` in `app.js` (default 60 seconds).
 - **Write tags into image alt text:** set `CONFIG.writeAltText = true` in `app.js`. This fills empty alt text with Squeak's description; everyone on the board can see it.
 - **Rename him:** change the nameplate text in `app.html` (`<div class="nameplate frame" …>Squeak</div>`) and `appName` in the manifest.
+- **Publishing your own edits:** every file Squeak loads carries a build number (for example `?v=2026.10.10-a`), so browsers always fetch the newest copy. After changing any file, use Find & Replace to give the build number a new value everywhere it appears: `app.js`, `app.html`, `index.html` and `vision-worker.js`. The panel shows the current number at the bottom, so you can confirm the update is live.
 - **Colors:** the palette tokens at the top of `app.html` (black lacquer, gold and marble cream by default).
 - **Art:** the scene is a 96×96 pixel canvas drawn at 3×.
   - `assets/squeak-portrait.png` holds 12 frames of 64×64 in a row. Frame order is eyes (open, closed, happy) × mouth (closed, o, open, grin), so frame index = `eyes × 4 + mouth`.
@@ -173,7 +175,7 @@ Squeak tells you which kind of match he found: "Got one" when every word matched
 | He seems to catalogue everything again after a reload | His sign should say "N trims ready" within a second. If it says "saved on this computer only", Miro refused to save to the board. Check you have edit access, and look in the browser console (F12) for lines starting with `[Squeak]`. |
 | His sign says some photos "couldn't be read" | Those files are damaged or in an unusual format. Re-upload them as JPEG or PNG. |
 | A trim photo is being skipped | Another photo is sitting on top of it. Move it out from under the other photo, or bring it to the front. |
-| Your changes don't appear after pushing | GitHub Pages takes a minute or two to update. Then hard-refresh the board (Ctrl/Cmd + Shift + R). |
+| Your changes don't appear after pushing | Check the build number at the bottom of Squeak's panel. If it's the old one, GitHub Pages hasn't finished updating (give it a few minutes), or a file was uploaded to the wrong folder. The `assets`, `docs` and `miro` files must stay inside their folders. Then reload the board (Ctrl/Cmd + Shift + R). |
 
 ---
 

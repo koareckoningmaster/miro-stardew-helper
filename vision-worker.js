@@ -30,7 +30,7 @@ import {
   VISION_MODEL,
   nameColor,
   shapePrompt,
-} from './trims.js';
+} from './trims.js?v=2026.10.10-a';
 
 env.allowLocalModels = false; // always fetch weights from the Hugging Face Hub (browser-cached)
 
