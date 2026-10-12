@@ -8,16 +8,17 @@ A 16-bit shopkeeper who lives in your Miro board's side panel. Squeak greets eve
 
 - **Greets people as they arrive.** On the board you choose as his home, Squeak's panel opens for everyone who comes in, and he says hello by name, then asks what he can help them find today. On other boards he stays out of the way until someone clicks his icon.
 - **Listens when you click him.** A search box opens inside his dialogue box. Type a word or a loose description.
-- **Actually looks at your trims.** Squeak uses in-browser image recognition (a fashion-trained CLIP model) to label every photo on the board. He knows about 60 kinds of item:
-  - **Trims and ribbons:** *lace, rickrack, pom-pom, sequin, velvet ribbon…*
-  - **Beads:** *seed, bugle, faceted, trapezoid…*
-  - **Metal hardware:** *rings, D-rings, buckles, grommets, snaps, clasps…*
-  - **Buttons and embellishments.**
+- **Actually looks at your trims.** Squeak uses in-browser image recognition (a fashion-trained CLIP model) to label every photo on the board. He knows about 130 kinds of item:
+  - **Laces:** *chantilly, guipure, venise, eyelet, tatted…*
+  - **Trims, braids and fringes:** *rickrack, soutache, gimp, bobble fringe, cup chain…*
+  - **Ribbons:** *satin, grosgrain, jacquard, picot, wired, ombré…*
+  - **Beads, buttons, metal hardware and embellishments.**
 
-  He names shapes for beads, buttons and charms, and measures colors from the photo's actual pixels. When he isn't sure of the exact type, he says the broader family ("bead", "metal hardware") instead of guessing. He saves what he learns on the board itself, so each photo is only ever looked at once, and every visitor's Squeak is ready instantly on reload. iPhone **HEIC** photos work too: Squeak converts them in the browser.
+  He also judges material (velvet, metal, glass, wood, pearl…), pattern (striped, floral, plaid…) and finish (metallic, iridescent, matte…), names shapes for small objects, and measures colors from the photo's actual pixels. He finds the item against its background and looks at it up close, alongside the whole photo. The item's shape counts as evidence too: a long strip is probably trim or ribbon, a compact object with a hole is probably a ring, and lots of tiny pieces are probably loose beads or sequins. Photos often show several of the same item. He recognizes those as one item repeated: he measures them a piece at a time, looks at one piece up close as well as the group, and describes them in the plural ("gold metal O-rings"). Plural searches work too, so "rings" finds "ring". He decides the family first (trim, ribbon, bead…), then names the exact type only when it's clearly ahead. When close variations split the vote, he uses the most general of them ("sequin trim" rather than guessing "sequin mesh"). He never estimates sizes.
 - **Only looks at the top layer.** Photos that have another photo sitting on top of them, like backdrops behind your frames or old photos stacked under new ones, are ignored. The name of the frame a photo sits on is searchable too, so a photo on a frame called "Bridal Lace" turns up for "bridal".
 - **Keeps up with the board.** New photos get catalogued, whether you add them or a teammate does (he checks the board about once a minute and on every search). Deleted photos are forgotten, saved catalogue included. Copied or duplicated photos bring their tags along, so they don't need cataloguing again.
-- **Learns from you.** If he labels something wrong, choose **Fix this label** and tell him what it really is. He saves it with the photo, searches by it, and uses it from then on.
+- **Learns from you.** When you fix a photo's label, near-identical photos of the same trim borrow it, unless they have their own.
+- **Fix this label.** If he labels something wrong, choose **Fix this label** and tell him what it really is. He saves it with the photo, searches by it, and uses it from then on.
 - **Finds and shows.** He holds up the best match, asks if you'd like a closer look, and zooms the board to it. You can flip through other matches or click any result directly.
 - **Has some life to him.** He blinks, breathes and talks. When you search, he turns around and walks back to the shelves behind his counter. There he looks up, reaches for the top shelf, bends down to the bottom one, stops to think, and picks trims up to examine them, tossing aside the ones that aren't right. Then he walks back and raises a square frame over the counter showing the trim he found, as a sharp, full-resolution photo. Ask for the next one and he reaches under the desk and pulls up another. The city outside the atelier windows follows the time of day.
 
@@ -137,6 +138,8 @@ Squeak tells you which kind of match he found: "Got one" when every word matched
   - `'home'` (the default): only on ticked boards.
   - `'all'`: every board.
   - `'none'`: only when someone clicks his icon.
+- **How sure Squeak must be before naming things himself:** `TAGGING` in `trims.js`. How much an item's shape nudges his judgement: `SHAPE_PRIORS` in `trims.js`.
+- **How alike photos must be to share a label you gave:** `CONFIG.learnFromLabels` in `app.js`.
 - **What he does at the shelves:** `SEARCH_ACTIONS` in `app.js`. These are the moves he picks from: reach, bend, think, glance, browse and double-take. He draws them from a shuffled deck, so every search goes differently. `CONFIG.shelfActions` sets how many he completes before walking back.
 - **Where he searches:** `CONFIG.searchAt` in `app.js`. Use `'shelves'` (the default) to have him walk back and search the shelves, or `'desk'` to have him rummage under the counter.
 - **How often he checks for teammates' changes:** `CONFIG.syncEverySec` in `app.js` (default 60 seconds).

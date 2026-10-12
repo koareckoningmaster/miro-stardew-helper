@@ -11,9 +11,9 @@
  */
 // BUILD is stamped into every file name Squeak loads, so browsers can't keep serving an old copy
 // after you publish an update. It's also shown at the bottom of the panel.
-export const BUILD = '2026.10.10-a';
-import { LINES } from './lines.js?v=2026.10.10-a';
-import { TAGGER_VERSION, VISION_MODEL, describeTags, tagSearchText } from './trims.js?v=2026.10.10-a';
+export const BUILD = '2026.10.11-d';
+import { LINES } from './lines.js?v=2026.10.11-d';
+import { FINGERPRINT_VERSION, TAGGER_VERSION, VISION_MODEL, describeTags, tagSearchText } from './trims.js?v=2026.10.11-d';
 
 /* ═════════════════════════ Config ═════════════════════════ */
 
@@ -25,6 +25,7 @@ const CONFIG = {
   metaKey: 'pipTrim', // where tags + the image fingerprint are stored on each image
   writeAltText: false, // true = also fill empty image alt text with Squeak's tags (visible to everyone)
   syncEverySec: 60, // how often to check the board for photos teammates added or removed
+  learnFromLabels: 0.94, // how alike two photos must look (at least) for a fixed label to carry over (0–1)
   searchAt: 'shelves', // 'shelves' = walks back and searches the shelves; 'desk' = rummages under the counter
   shelfActions: 1, // how many complete actions he does at the shelves (at least) before walking back
   semantic: {
@@ -1147,7 +1148,13 @@ function createVision() {
     warm: (parts) => call('warm', { parts }),
     embedText: (text) => call('embedText', { text }).then((r) => Float32Array.from(r.embedding)),
     analyzeImage: (blob) =>
-      call('analyzeImage', { blob }).then((r) => ({ embedding: Float32Array.from(r.embedding), tags: r.tags, tv: TAGGER_VERSION })),
+      call('analyzeImage', { blob }).then((r) => ({
+        embedding: Float32Array.from(r.embedding),
+        tags: r.tags,
+        tv: TAGGER_VERSION,
+        fv: FINGERPRINT_VERSION,
+      })),
+    embedQuery: (text) => call('embedQuery', { text }).then((r) => Float32Array.from(r.embedding)),
     retag: (blob, embedding) => call('retag', { blob, embedding: Array.from(embedding) }).then((r) => r.tags),
   };
 }
@@ -1161,7 +1168,7 @@ const visionUsable = () => !vision.state.failed && typeof vision.embedText === '
    who opens Squeak afterwards gets instant, recognition-powered search. */
 
 const index = new Map(); // image id -> { tags: string[], embedding: Float32Array }
-const catalog = { queue: [], running: false, paused: false, done: 0, total: 0, failed: 0, skipped: 0, analyzed: 0, relabel: [], relabelling: false, relabelled: 0 };
+const catalog = { queue: [], running: false, paused: false, done: 0, total: 0, failed: 0, skipped: 0, analyzed: 0, relabel: [], relabelling: false, relabelled: 0, recheck: [], rechecking: false };
 
 function packEmbedding(vec) {
   let max = 0;
@@ -1191,6 +1198,7 @@ function readMeta(meta) {
       embedding: typeof meta.e === 'string' ? unpackEmbedding(meta.e, meta.s) : null,
       tv: meta.tv || 1,
       label: typeof meta.label === 'string' ? meta.label : '',
+      fv: meta.fv || 1,
     };
   } catch {
     return null;
@@ -1203,6 +1211,7 @@ function writeMeta(entry) {
     model: VISION_MODEL.tag,
     tags: entry.tags,
     tv: entry.tv || 1,
+    fv: entry.fv || 1,
     ...(entry.label ? { label: entry.label } : {}),
     ...(entry.embedding ? packEmbedding(entry.embedding) : {}),
   };
@@ -1215,14 +1224,15 @@ function writeMeta(entry) {
    2. Each photo's app metadata, which travels with the photo if the board is duplicated.
    3. This browser (IndexedDB): instant, and it still works for people who can't edit the board. */
 
-const STORE = { collection: 'pip-catalog', chunks: 32, flushMs: 2000 };
+const STORE = { collection: 'pip-catalog', chunks: 64, flushMs: 2000 };
 let boardId = 'unknown';
 const savedCatalog = new Map(); // photo id -> { t: tags, e: fingerprint, s: scale }
-const save = { dirty: new Set(), removed: new Set(), timer: null, storageFailures: 0, storageOk: true, metaFailures: 0, metaOk: true, lastError: '' };
+const save = { dirty: new Set(), removed: new Set(), misplaced: new Set(), timer: null, storageFailures: 0, storageOk: true, metaFailures: 0, metaOk: true, lastError: '' };
 
 const packEntry = (entry) => ({
   t: entry.tags,
   g: entry.tv || 1,
+  f: entry.fv || 1,
   ...(entry.label ? { u: entry.label } : {}),
   ...(entry.embedding ? packEmbedding(entry.embedding) : {}),
 });
@@ -1233,6 +1243,7 @@ function unpackEntry(packed) {
       embedding: typeof packed.e === 'string' ? unpackEmbedding(packed.e, packed.s) : null,
       tv: packed.g || 1,
       label: typeof packed.u === 'string' ? packed.u : '',
+      fv: packed.f || 1,
     };
   } catch {
     return null;
@@ -1294,6 +1305,17 @@ async function loadSavedCatalog() {
     if (source?.m !== VISION_MODEL.tag || !source.items) continue;
     for (const [id, packed] of Object.entries(source.items)) savedCatalog.set(id, packed);
   }
+  // Catalogues saved before the storage layout grew sit in the "wrong" slot: move them over.
+  chunks.forEach((chunk, i) => {
+    if (chunk?.items && Object.keys(chunk.items).some((id) => chunkOf(id) !== i)) {
+      save.misplaced.add(i);
+      for (const id of Object.keys(chunk.items)) save.dirty.add(chunkOf(id));
+    }
+  });
+  if (save.misplaced.size) {
+    clearTimeout(save.timer);
+    save.timer = setTimeout(flushSaves, STORE.flushMs * 3);
+  }
   return savedCatalog;
 }
 
@@ -1313,7 +1335,7 @@ async function flushSaves() {
   localStore.write({ m: tag, items: Object.fromEntries(savedCatalog) }).catch(() => {});
 
   const coll = boardStorage();
-  const dirty = [...save.dirty];
+  const dirty = [...new Set([...save.dirty, ...save.misplaced])].sort((a, b) => b - a); // new slots first
   save.dirty.clear();
   if (!coll || !save.storageOk) return;
   const removedNow = new Set(save.removed);
@@ -1325,9 +1347,11 @@ async function flushSaves() {
       const items = current?.m === tag && current.items ? current.items : {};
       for (const [id, packed] of savedCatalog) if (chunkOf(id) === i) items[id] = packed;
       for (const id of save.removed) if (chunkOf(id) === i) delete items[id]; // photos deleted from the board
+      if (save.misplaced.has(i)) for (const id of Object.keys(items)) if (chunkOf(id) !== i) delete items[id];
       await coll.set(key, { m: tag, items });
       save.storageFailures = 0;
       for (const id of removedNow) if (chunkOf(id) === i) save.removed.delete(id);
+      save.misplaced.delete(i);
     } catch (err) {
       save.lastError = err?.message || String(err);
       console.warn('[Squeak] Could not save to the board storage:', save.lastError);
@@ -1398,7 +1422,9 @@ async function scanBoard() {
       index.set(image.id, entry);
       catalog.done++;
       if (entry.tv !== TAGGER_VERSION) catalog.relabel.push(image); // labelled by an older version
+      if (entry.fv !== FINGERPRINT_VERSION) catalog.recheck.push(image); // looked at the older way
     } else {
+      if (entry) index.set(image.id, entry); // e.g. a label someone gave it, before Squeak has looked himself
       unknown.push(image);
     }
   }
@@ -1418,6 +1444,7 @@ async function scanBoard() {
   console.info(`[Squeak] ${catalog.done} of ${catalog.total} trims already catalogued; ${catalog.queue.length} new.`);
   if (catalog.queue.length) runCatalog();
   else if (catalog.relabel.length) runRelabel();
+  else if (catalog.recheck.length) runRecheck();
   else renderCatalogSign();
 }
 
@@ -1449,6 +1476,43 @@ async function runRelabel() {
   await flushSaves();
   setSign(`${catalog.relabelled} trim labels updated`);
   hideSign(4000);
+  if (catalog.recheck.length) setTimeout(runRecheck, 4500);
+}
+
+/** One-time, in the background: look again at photos catalogued before Squeak learned to crop to
+    the item and use its shape. Their old labels keep working meanwhile; labels people gave are kept. */
+async function runRecheck() {
+  if (catalog.rechecking || catalog.running || !catalog.recheck.length || !visionUsable()) return;
+  catalog.rechecking = true;
+  const total = catalog.recheck.length;
+  let done = 0;
+  try {
+    await vision.warm(['vision']);
+  } catch {
+    catalog.rechecking = false;
+    return;
+  }
+  setSign(`Taking a closer look at trims: 0 of ${total}`, 0);
+  while (catalog.recheck.length) {
+    while (catalog.paused || catalog.running) await sleep(250); // searches and new photos come first
+    const image = catalog.recheck.shift();
+    const before = index.get(image.id);
+    if (!before) continue;
+    try {
+      const entry = await vision.analyzeImage(await readableImage(image));
+      if (before.label) entry.label = before.label;
+      index.set(image.id, entry);
+      persist(image, entry);
+    } catch (err) {
+      console.warn(`[Squeak] Couldn't re-check image ${image.id}:`, err?.message || err);
+    }
+    done++;
+    setSign(`Taking a closer look at trims: ${done} of ${total}`, done / total);
+  }
+  catalog.rechecking = false;
+  await flushSaves();
+  setSign(`${done} trims re-checked`);
+  hideSign(3000);
 }
 
 /* ═════════════════════════ Reading photos (HEIC-safe) ═════════════════════════
@@ -1599,6 +1663,8 @@ async function runCatalog() {
     const image = catalog.queue.shift();
     try {
       const entry = await vision.analyzeImage(await readableImage(image));
+      const before = index.get(image.id); // keep a label someone gave it
+      if (before?.label) entry.label = before.label;
       index.set(image.id, entry);
       catalog.analyzed++;
       persist(image, entry);
@@ -1617,6 +1683,7 @@ async function runCatalog() {
   await flushSaves(); // save the last batch right away
   renderCatalogSign();
   if (catalog.relabel.length) setTimeout(runRelabel, 3000);
+  else if (catalog.recheck.length) setTimeout(runRecheck, 3000);
   const thisRun = catalog.analyzed - analyzedBefore;
   if (thisRun && thisRun <= 3) ambient(line('catalogSmall'));
   else if (index.size) ambient(line('catalogDone', { count: index.size }));
@@ -1724,6 +1791,38 @@ const meaningfulTitle = (title) => {
     : '';
 };
 
+/* A label someone gave one photo also helps with near-identical photos (the same trim shot twice).
+   Product photos can look alike to the model even when the trims differ, so the rule is strict: a
+   photo borrows a label only if it's one of the labelled photo's very closest look-alikes, clearly
+   closer than the board's other photos are, and above a high similarity bar. Its own label wins. */
+const learned = new Map(); // photo id -> borrowed label
+let learnedStale = true;
+function rebuildLearned() {
+  learned.clear();
+  const bestSim = new Map();
+  for (const [labelledId, labelled] of index) {
+    if (!labelled.label || !labelled.embedding) continue;
+    const sims = [];
+    for (const [id, entry] of index) {
+      if (id !== labelledId && entry.embedding) sims.push([id, dot(labelled.embedding, entry.embedding), entry]);
+    }
+    if (sims.length < 2) continue;
+    const sorted = sims.map(([, sim]) => sim).sort((a, b) => a - b);
+    const typical = sorted[Math.floor(sorted.length / 2)]; // how alike photos on this board usually look
+    const bar = Math.max(CONFIG.learnFromLabels, typical + 0.05);
+    for (const [id, sim, entry] of sims) {
+      if (entry.label || sim < bar || sim <= (bestSim.get(id) ?? 0)) continue;
+      bestSim.set(id, sim);
+      learned.set(id, labelled.label);
+    }
+  }
+  learnedStale = false;
+}
+function learnedLabel(id) {
+  if (learnedStale) rebuildLearned();
+  return learned.get(id) || '';
+}
+
 function fieldsOf(item) {
   switch (item.type) {
     case 'sticky_note':
@@ -1741,6 +1840,7 @@ function fieldsOf(item) {
       const tags = entry?.tags || [];
       return [
         { key: 'label', text: entry?.label || '', weight: 1.8 }, // what a person told Squeak it is
+        { key: 'learned', text: learnedLabel(item.id), weight: 1.4 }, // borrowed from a near-identical photo
         { key: 'title', text: item.title || '', weight: 1.4 },
         { key: 'alt', text: item.alt || '', weight: 1.2 },
         { key: 'tags', text: tagSearchText(tags), weight: 1.3 },
@@ -1750,6 +1850,15 @@ function fieldsOf(item) {
     default:
       return [];
   }
+}
+
+/** "rings" -> "ring", "boxes" -> "box", "berries" -> "berry"; leaves "lace", "glass" and short words alone. */
+function singular(word) {
+  if (word.length < 4 || /ss$/.test(word)) return word;
+  if (/ies$/.test(word)) return `${word.slice(0, -3)}y`;
+  if (/(ches|shes|xes|sses)$/.test(word)) return word.slice(0, -2);
+  if (/s$/.test(word)) return word.slice(0, -1);
+  return word;
 }
 
 function tokenize(query) {
@@ -1769,7 +1878,8 @@ function keywordScore(item, phrase, tokens) {
     let score = 0;
     if (phrase.length > 1 && hay.includes(phrase)) score += hay === phrase ? 14 : 8;
     for (const token of tokens) {
-      if (words.includes(token)) {
+      const one = singular(token); // "rings" finds "ring"
+      if (words.includes(token) || (one !== token && words.includes(one))) {
         score += 4;
         hits.add(token);
       } else if (words.some((w) => w.startsWith(token))) {
@@ -1817,7 +1927,7 @@ function visualScores(queryVec, baseVec, allowed) {
 
 let baselineVec = null;
 async function baselineVector() {
-  if (!baselineVec && visionUsable()) baselineVec = await vision.embedText('a trim').catch(() => null);
+  if (!baselineVec && visionUsable()) baselineVec = await vision.embedQuery('trim').catch(() => null);
   return baselineVec;
 }
 
@@ -1876,7 +1986,14 @@ function describe(find, query) {
     const entry = index.get(item.id);
     const tags = entry?.tags || [];
     const title = meaningfulTitle(item.title);
-    const base = entry?.label ? withArticle(entry.label) : tags.length ? describeTags(tags) : 'a trim photo';
+    const borrowed = learnedLabel(item.id);
+    const base = entry?.label
+      ? withArticle(entry.label)
+      : borrowed
+        ? withArticle(borrowed)
+        : tags.length
+          ? describeTags(tags)
+          : 'a trim photo';
     const frame = frameTitles.get(item.parentId);
     const where = frame ? ` on the "${snippet(frame, query, 30)}" frame` : '';
     if (title) return `${base} called "${snippet(title, query, 40)}"${where}`;
@@ -1903,7 +2020,14 @@ function listLabel(find, query) {
   const entry = index.get(item.id);
   const tags = entry?.tags || [];
   const title = meaningfulTitle(item.title);
-  const desc = entry?.label ? cap(entry.label) : tags.length ? cap(describeTags(tags, { article: false })) : 'Trim photo';
+  const borrowed = learnedLabel(item.id);
+  const desc = entry?.label
+    ? cap(entry.label)
+    : borrowed
+      ? cap(borrowed)
+      : tags.length
+        ? cap(describeTags(tags, { article: false }))
+        : 'Trim photo';
   return title ? `${title} (${desc.toLowerCase()})` : desc;
 }
 
@@ -2040,6 +2164,7 @@ async function saveLabel(raw) {
   const entry = index.get(find.item.id) || { tags: [], embedding: null, tv: TAGGER_VERSION, label: '' };
   entry.label = label;
   index.set(find.item.id, entry);
+  learnedStale = true;
   persist(find.item, entry);
   flushSaves();
   if (currentFinds.length) renderFinds(currentFinds, currentFinds.length, currentQuery);
@@ -2075,13 +2200,14 @@ function promptFor(query) {
 /** The query as a vector, if the text model is ready within `waitMs`. Keeps loading in the background otherwise. */
 async function queryVector(query, waitMs) {
   if (!visionUsable()) return null;
-  const job = vision.embedText(promptFor(query)).catch(() => null);
+  const job = vision.embedQuery(promptFor(query)).catch(() => null);
   if (vision.state.textReady) return job;
   return Promise.race([job, sleep(waitMs).then(() => null)]);
 }
 
 async function runSearch(raw) {
   const query = raw.trim();
+  learnedStale = true; // photos may have been added, relabelled or re-checked since the last search
   const flow = startFlow();
   if (PREVIEW && query) {
     hideAsk();

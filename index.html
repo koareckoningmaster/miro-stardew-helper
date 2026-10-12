@@ -28,7 +28,7 @@
           // Another app's panel can block ours; canOpenPanel() tells us before we try.
           if (!(await miro.board.ui.canOpenPanel())) return false;
           // `reason` lets the panel pick a first-visit greeting vs. a welcome-back line.
-          await miro.board.ui.openPanel({ url: 'app.html?v=2026.10.10-a', data: { reason } });
+          await miro.board.ui.openPanel({ url: 'app.html?v=2026.10.11-d', data: { reason } });
           return true;
         } catch (err) {
           console.warn('[Squeak] Could not open the panel:', err);

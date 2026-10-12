@@ -17,15 +17,23 @@ export const VISION_MODEL = {
   tag: 'marqo-fashionclip-q8-v1', // identifies saved image fingerprints; change only if you change the model
 };
 
-export const TAGGER_VERSION = 2; // bump when the vocabulary or labelling rules change
+export const TAGGER_VERSION = 5; // bump when the vocabulary or labelling rules change
+export const FINGERPRINT_VERSION = 3; // how photos are looked at (cropping etc.); bump to re-check every photo once
 
 // How sure Squeak must be before using a specific word. Below these, he uses the broader word
 // ("bead" instead of "trapezoid bead"). Raise them for fewer but safer labels.
 export const TAGGING = {
-  typeConfidence: 0.25, // to name the exact type ("D-ring" rather than "metal hardware")
-  secondType: 0.2, // to add a runner-up type from the same family
+  // Squeak first decides the family (trim, ribbon, bead, button, hardware, embellishment), then
+  // names the exact type within it when it's confident, or clearly ahead of the runner-up.
+  typeConfidence: 0.3, // share of the family's odds needed to name the exact type outright
+  typeLead: 1.6, // …or this many times the runner-up's odds…
+  typeFloor: 0.12, // …as long as it has at least this share
+  secondType: 0.22, // share needed to also add a runner-up type
   shapeConfidence: 0.35, // to name a shape ("trapezoid")
   metalConfidence: 0.55, // to call a warm color "gold" or a gray "silver"
+  materialConfidence: 0.3, // to name a material ("velvet", "glass")
+  patternConfidence: 0.35, // to name a pattern ("floral", "striped")
+  finishConfidence: 0.4, // to name a finish ("iridescent", "matte")
 };
 
 // Each label is checked against several phrasings and the results are averaged ("prompt
@@ -112,6 +120,153 @@ export const ITEM_TYPES = [
   { key: 'brooch', group: 'embellishment', prompt: 'a jeweled brooch', phrase: 'brooch', words: ['brooch', 'pin', 'jewel', 'jeweled'] },
   { key: 'loose-sequins', group: 'embellishment', prompt: 'loose sequins and paillettes', phrase: 'loose sequins', mass: true, words: ['sequins', 'sequin', 'paillettes'] },
   { key: 'loose-rhinestones', group: 'embellishment', prompt: 'loose rhinestones and crystals', phrase: 'loose rhinestones', mass: true, words: ['rhinestones', 'crystals', 'gems', 'stones'] },
+  // ── more lace ──
+  { key: 'chantilly-lace', group: 'trim', prompt: 'delicate chantilly lace with fine net and floral motifs', phrase: 'chantilly lace', words: ['chantilly', 'lace', 'delicate', 'net', 'bridal'] },
+  { key: 'guipure-lace', group: 'trim', prompt: 'guipure lace with raised motifs and no net background', phrase: 'guipure lace', words: ['guipure', 'lace', 'macrame', 'chemical', 'raised'] },
+  { key: 'venise-lace', group: 'trim', prompt: 'venise lace with thick raised embroidered motifs', phrase: 'venise lace', words: ['venise', 'venice', 'lace', 'raised'] },
+  { key: 'eyelet-lace', group: 'trim', prompt: 'broderie anglaise eyelet trim with embroidered holes', phrase: 'eyelet trim', words: ['eyelet', 'broderie', 'anglaise', 'cotton', 'holes'] },
+  { key: 'tulle-lace', group: 'trim', prompt: 'embroidered tulle lace trim', phrase: 'tulle lace', words: ['tulle', 'mesh', 'net', 'lace'] },
+  { key: 'tatted-lace', group: 'trim', prompt: 'tatted lace edging with small rings and picots', phrase: 'tatted lace', words: ['tatted', 'tatting', 'lace', 'picot'] },
+  // ── more braid, cord and edging ──
+  { key: 'soutache', group: 'trim', prompt: 'narrow soutache braid', phrase: 'soutache braid', words: ['soutache', 'braid', 'russia', 'narrow'] },
+  { key: 'gimp', group: 'trim', prompt: 'decorative gimp braid trim for upholstery', phrase: 'gimp braid', words: ['gimp', 'braid', 'upholstery', 'scroll'] },
+  { key: 'chevron-braid', group: 'trim', prompt: 'chevron zigzag woven braid trim', phrase: 'chevron braid', words: ['chevron', 'braid', 'zigzag', 'herringbone'] },
+  { key: 'pompadour', group: 'trim', prompt: 'jacquard woven trim band with a pattern', phrase: 'jacquard trim', words: ['jacquard', 'woven', 'tape', 'band', 'tapestry'] },
+  { key: 'webbing', group: 'trim', prompt: 'flat woven webbing strap', phrase: 'webbing', words: ['webbing', 'strap', 'tape', 'belting', 'nylon'] },
+  { key: 'twill-tape', group: 'trim', prompt: 'cotton twill tape', phrase: 'twill tape', words: ['twill', 'tape', 'cotton', 'herringbone'] },
+  { key: 'drawstring', group: 'trim', prompt: 'a drawstring cord with tipped ends', phrase: 'drawstring', words: ['drawstring', 'cord', 'string', 'lace', 'aglet'] },
+  { key: 'rope-cord', group: 'trim', prompt: 'thick decorative rope cording with lip', phrase: 'rope cording', words: ['rope', 'cording', 'cord', 'lip', 'upholstery'] },
+  { key: 'picot-edge', group: 'trim', prompt: 'trim with a picot loop edge', phrase: 'picot trim', words: ['picot', 'loop', 'edge', 'edging'] },
+  { key: 'bobble-fringe', group: 'trim', prompt: 'bobble fringe with small fabric balls', phrase: 'bobble fringe', words: ['bobble', 'fringe', 'ball', 'pompom'] },
+  { key: 'bullion-fringe', group: 'trim', prompt: 'twisted bullion fringe', phrase: 'bullion fringe', words: ['bullion', 'fringe', 'twisted', 'upholstery'] },
+  { key: 'beaded-fringe', group: 'trim', prompt: 'beaded fringe with dangling strands of beads', phrase: 'beaded fringe', words: ['beaded', 'fringe', 'dangling', 'flapper', 'bead'] },
+  { key: 'chain-fringe', group: 'trim', prompt: 'metal chain fringe', phrase: 'chain fringe', words: ['chain', 'fringe', 'dangling', 'metal'] },
+  { key: 'feather-fringe', group: 'trim', prompt: 'feather fringe trim', phrase: 'feather fringe', words: ['feather', 'fringe', 'ostrich', 'marabou'] },
+  { key: 'sequin-fringe', group: 'trim', prompt: 'sequin fringe trim with hanging paillettes', phrase: 'sequin fringe', words: ['sequin', 'fringe', 'paillette', 'dangling'] },
+  { key: 'rhinestone-chain', group: 'trim', prompt: 'rhinestone cup chain', phrase: 'rhinestone cup chain', words: ['rhinestone', 'cup', 'chain', 'crystal', 'banding', 'diamante'] },
+  { key: 'rhinestone-banding', group: 'trim', prompt: 'wide rhinestone banding with rows of crystals', phrase: 'rhinestone banding', words: ['rhinestone', 'banding', 'crystal', 'mesh', 'bling'] },
+  { key: 'pearl-strand', group: 'trim', prompt: 'strands of pearls on a string', phrase: 'pearl strand', words: ['pearl', 'strand', 'string', 'pearls'] },
+  { key: 'lame-trim', group: 'trim', prompt: 'shiny metallic lame braid', phrase: 'lamé braid', words: ['lame', 'lamé', 'metallic', 'braid'] },
+  { key: 'velvet-cord', group: 'trim', prompt: 'velvet cord', phrase: 'velvet cord', words: ['velvet', 'cord', 'plush'] },
+  { key: 'sequin-mesh', group: 'trim', prompt: 'stretch sequin mesh trim', phrase: 'sequin mesh', words: ['sequin', 'mesh', 'stretch', 'sparkly'] },
+  { key: 'ruched-trim', group: 'trim', prompt: 'gathered ruched trim', phrase: 'ruched trim', words: ['ruched', 'gathered', 'shirred', 'ruffle'] },
+  { key: 'boning', group: 'trim', prompt: 'corset boning strips', phrase: 'boning', words: ['boning', 'corset', 'rigilene', 'spiral', 'stays'] },
+  { key: 'hook-loop', group: 'trim', prompt: 'hook and loop fastener tape', phrase: 'hook and loop tape', words: ['velcro', 'hook', 'loop', 'tape', 'fastener'] },
+  { key: 'zipper-tape', group: 'trim', prompt: 'continuous zipper tape', phrase: 'zipper tape', words: ['zipper', 'zip', 'tape', 'coil'] },
+  // ── more ribbons ──
+  { key: 'jacquard-ribbon', group: 'ribbon', prompt: 'woven jacquard ribbon with a pattern', phrase: 'jacquard ribbon', words: ['ribbon', 'jacquard', 'woven', 'patterned'] },
+  { key: 'picot-ribbon', group: 'ribbon', prompt: 'ribbon with picot loop edges', phrase: 'picot-edge ribbon', words: ['ribbon', 'picot', 'loop', 'edge'] },
+  { key: 'wired-ribbon', group: 'ribbon', prompt: 'wired edge ribbon', phrase: 'wired ribbon', words: ['ribbon', 'wired', 'wire', 'edge'] },
+  { key: 'taffeta-ribbon', group: 'ribbon', prompt: 'crisp taffeta ribbon', phrase: 'taffeta ribbon', words: ['ribbon', 'taffeta', 'crisp', 'silk'] },
+  { key: 'ombre-ribbon', group: 'ribbon', prompt: 'ombre ribbon fading from one color to another', phrase: 'ombré ribbon', words: ['ribbon', 'ombre', 'ombré', 'gradient', 'fade'] },
+  { key: 'metallic-ribbon', group: 'ribbon', prompt: 'shiny metallic ribbon', phrase: 'metallic ribbon', words: ['ribbon', 'metallic', 'lame', 'shiny'] },
+  { key: 'double-satin-ribbon', group: 'ribbon', prompt: 'double-faced satin ribbon', phrase: 'double-faced satin ribbon', words: ['ribbon', 'satin', 'double', 'faced'] },
+  { key: 'chiffon-ribbon', group: 'ribbon', prompt: 'soft silk chiffon ribbon with frayed edges', phrase: 'chiffon ribbon', words: ['ribbon', 'chiffon', 'silk', 'frayed', 'raw'] },
+  { key: 'velvet-ribbon-wide', group: 'ribbon', prompt: 'wide plush velvet ribbon', phrase: 'wide velvet ribbon', words: ['ribbon', 'velvet', 'wide', 'plush'] },
+  // ── more beads ──
+  { key: 'crystal-beads', group: 'bead', prompt: 'bicone crystal beads', phrase: 'crystal bead', words: ['crystal', 'bicone', 'swarovski', 'beads', 'bead'] },
+  { key: 'drop-beads', group: 'bead', prompt: 'teardrop shaped beads', phrase: 'drop bead', words: ['drop', 'teardrop', 'briolette', 'beads', 'bead'] },
+  { key: 'cube-beads', group: 'bead', prompt: 'small cube beads', phrase: 'cube bead', words: ['cube', 'square', 'beads', 'bead'] },
+  { key: 'metal-beads', group: 'bead', prompt: 'metal spacer beads', phrase: 'metal bead', words: ['metal', 'spacer', 'beads', 'bead'] },
+  { key: 'acrylic-beads', group: 'bead', prompt: 'colorful acrylic plastic beads', phrase: 'acrylic bead', words: ['acrylic', 'plastic', 'beads', 'bead'] },
+  { key: 'stone-beads', group: 'bead', prompt: 'natural gemstone beads', phrase: 'gemstone bead', words: ['gemstone', 'stone', 'natural', 'agate', 'beads', 'bead'] },
+  { key: 'sequin-beads', group: 'bead', prompt: 'cup sequins and flat sequins', phrase: 'cup sequin', words: ['cup', 'sequin', 'sequins', 'paillette'] },
+  // ── more buttons ──
+  { key: 'pearl-button', group: 'button', prompt: 'a pearl or mother of pearl button', phrase: 'pearl button', words: ['pearl', 'mother', 'shell', 'button', 'buttons'] },
+  { key: 'metal-button', group: 'button', prompt: 'a metal button with a crest', phrase: 'metal button', words: ['metal', 'brass', 'crest', 'blazer', 'button', 'buttons'] },
+  { key: 'wood-button', group: 'button', prompt: 'a wooden button', phrase: 'wooden button', words: ['wood', 'wooden', 'button', 'buttons'] },
+  { key: 'jeweled-button', group: 'button', prompt: 'a jeweled rhinestone button', phrase: 'jeweled button', words: ['jeweled', 'rhinestone', 'crystal', 'button', 'buttons'] },
+  { key: 'jeans-button', group: 'button', prompt: 'a metal jeans tack button', phrase: 'jeans button', words: ['jeans', 'denim', 'tack', 'button', 'buttons'] },
+  { key: 'frog-closure', group: 'button', prompt: 'a chinese frog knot closure', phrase: 'frog closure', words: ['frog', 'knot', 'chinese', 'closure', 'loop'] },
+  // ── more hardware ──
+  { key: 'slider', group: 'hardware', prompt: 'a strap adjuster slider', phrase: 'strap slider', words: ['slider', 'adjuster', 'strap', 'triglide', 'tri-glide'] },
+  { key: 'swivel-clasp', group: 'hardware', prompt: 'a swivel snap hook clasp', phrase: 'swivel clasp', words: ['swivel', 'snap', 'hook', 'clasp', 'trigger'] },
+  { key: 'magnetic-snap', group: 'hardware', prompt: 'a magnetic snap closure', phrase: 'magnetic snap', words: ['magnetic', 'magnet', 'snap', 'closure'] },
+  { key: 'bra-hardware', group: 'hardware', prompt: 'lingerie bra rings and sliders', phrase: 'lingerie hardware', words: ['bra', 'lingerie', 'ring', 'slider', 'hook'] },
+  { key: 'eyelet-hardware', group: 'hardware', prompt: 'small metal eyelets', phrase: 'metal eyelet', words: ['eyelet', 'eyelets', 'grommet', 'metal'] },
+  { key: 'spike-stud', group: 'hardware', prompt: 'metal spike studs', phrase: 'spike stud', words: ['spike', 'stud', 'cone', 'punk', 'metal'] },
+  { key: 'chain-strap', group: 'hardware', prompt: 'a chunky metal chain strap', phrase: 'chain strap', words: ['chain', 'strap', 'chunky', 'curb', 'link'] },
+  { key: 'jump-ring', group: 'hardware', prompt: 'small metal jump rings', phrase: 'jump ring', words: ['jump', 'ring', 'rings', 'split', 'findings'] },
+  { key: 'bell', group: 'hardware', prompt: 'small metal jingle bells', phrase: 'jingle bell', words: ['bell', 'bells', 'jingle'] },
+  { key: 'safety-pin', group: 'hardware', prompt: 'safety pins', phrase: 'safety pin', words: ['safety', 'pin', 'pins'] },
+  // ── more embellishments ──
+  { key: 'patch', group: 'embellishment', prompt: 'an embroidered iron-on patch', phrase: 'embroidered patch', words: ['patch', 'patches', 'badge', 'iron'] },
+  { key: 'collar-applique', group: 'embellishment', prompt: 'a beaded collar or neckline applique', phrase: 'neckline appliqué', words: ['collar', 'neckline', 'applique', 'appliqué', 'beaded'] },
+  { key: 'lace-motif', group: 'embellishment', prompt: 'a single lace motif applique', phrase: 'lace motif', words: ['lace', 'motif', 'applique', 'appliqué', 'flower'] },
+  { key: 'tassel-single', group: 'embellishment', prompt: 'a single decorative tassel', phrase: 'tassel', words: ['tassel', 'tassels', 'pendant'] },
+  { key: 'pom-single', group: 'embellishment', prompt: 'a single large fluffy pompom', phrase: 'pompom', words: ['pompom', 'pom', 'fluffy', 'ball'] },
+  { key: 'rosette', group: 'embellishment', prompt: 'a ribbon rosette', phrase: 'rosette', words: ['rosette', 'ribbon', 'cockade', 'flower'] },
+  { key: 'hotfix', group: 'embellishment', prompt: 'hotfix rhinestone motif', phrase: 'hotfix motif', words: ['hotfix', 'iron', 'rhinestone', 'motif'] },
+  { key: 'feather-pad', group: 'embellishment', prompt: 'a feather pad or feather cluster', phrase: 'feather cluster', words: ['feather', 'cluster', 'pad', 'plume'] },
+  { key: 'shell', group: 'embellishment', prompt: 'natural sea shells used as embellishments', phrase: 'shell', words: ['shell', 'shells', 'cowrie', 'natural'] },
+  { key: 'tag', group: 'embellishment', prompt: 'a woven garment label or tag', phrase: 'woven label', words: ['label', 'tag', 'woven', 'brand'] },
+];
+
+// The item's shape, measured from the photo, nudges which family it's likely to be. A long strip is
+// probably trim or ribbon; a compact object with a hole is probably a ring; lots of tiny pieces are
+// probably loose beads or sequins. Photos often show several of the same item: those are measured
+// one piece at a time, so a group of rings or buttons is still judged as rings or buttons. These gently multiply the model's odds (1 = no change): they tip close
+// calls, they don't override what the model clearly sees.
+export const SHAPE_PRIORS = {
+  strip: { trim: 1.35, ribbon: 1.35, bead: 0.65, button: 0.65, hardware: 0.8, embellishment: 0.8 }, // long and narrow
+  compact: { trim: 0.8, ribbon: 0.7, bead: 1.25, button: 1.25, hardware: 1.25, embellishment: 1.2 }, // roughly as wide as tall
+  scatter: { trim: 0.8, ribbon: 0.65, bead: 1.5, button: 1.0, hardware: 1.0, embellishment: 1.2 }, // lots of tiny pieces (loose beads, sequins)
+  holeTypes: ['o-ring', 'd-ring', 'jump-ring', 'grommet', 'eyelet-hardware', 'bra-hardware', 'button', 'slider'],
+  holeBoost: 2.0, // for those types when the item has a hole in the middle
+  stripElongation: 3.2, // length ÷ width at or above this = a strip
+  compactElongation: 2.0, // below this = compact
+  minTiny: 8, // at least this many tiny pieces = "scatter" (several same-sized pieces are just one item, repeated)
+};
+
+// Material, pattern and finish: judged for every photo, named only when Squeak is fairly sure.
+// Keys carry a prefix (m:, p:, f:) so they never clash with item types or colors.
+export const MATERIALS = [
+  { key: 'm:satin', phrase: 'satin', prompt: 'smooth shiny satin fabric', words: ['satin', 'silky', 'sateen'] },
+  { key: 'm:velvet', phrase: 'velvet', prompt: 'soft plush velvet', words: ['velvet', 'velour', 'plush'] },
+  { key: 'm:cotton', phrase: 'cotton', prompt: 'matte woven cotton', words: ['cotton', 'canvas'] },
+  { key: 'm:linen', phrase: 'linen', prompt: 'textured natural linen', words: ['linen', 'flax', 'natural'] },
+  { key: 'm:silk', phrase: 'silk', prompt: 'fine lustrous silk', words: ['silk', 'silky'] },
+  { key: 'm:organza', phrase: 'organza', prompt: 'sheer crisp organza', words: ['organza', 'sheer'] },
+  { key: 'm:tulle', phrase: 'tulle', prompt: 'fine net tulle mesh', words: ['tulle', 'net', 'mesh'] },
+  { key: 'm:lace', phrase: 'lace', prompt: 'openwork lace', words: ['lace', 'lacy'] },
+  { key: 'm:leather', phrase: 'leather', prompt: 'leather or suede', words: ['leather', 'suede', 'faux'] },
+  { key: 'm:metal', phrase: 'metal', prompt: 'solid metal', words: ['metal', 'metallic', 'brass', 'steel', 'alloy'] },
+  { key: 'm:glass', phrase: 'glass', prompt: 'transparent glass', words: ['glass', 'crystal', 'transparent'] },
+  { key: 'm:plastic', phrase: 'plastic', prompt: 'molded plastic', words: ['plastic', 'acrylic', 'resin', 'nylon'] },
+  { key: 'm:wood', phrase: 'wooden', prompt: 'natural wood', words: ['wood', 'wooden', 'bamboo'] },
+  { key: 'm:pearl', phrase: 'pearl', prompt: 'pearl or mother of pearl', words: ['pearl', 'pearly', 'nacre'] },
+  { key: 'm:yarn', phrase: 'yarn', prompt: 'fluffy knitted yarn or wool', words: ['yarn', 'wool', 'knit', 'woolen'] },
+  { key: 'm:feather', phrase: 'feather', prompt: 'soft feathers', words: ['feather', 'feathers', 'plume'] },
+  { key: 'm:fur', phrase: 'fur', prompt: 'fluffy fur or faux fur', words: ['fur', 'furry', 'faux'] },
+  { key: 'm:raffia', phrase: 'raffia', prompt: 'woven raffia straw', words: ['raffia', 'straw', 'jute', 'natural'] },
+  { key: 'm:sequin', phrase: 'sequined', prompt: 'covered in sequins', words: ['sequin', 'sequined', 'sequins'] },
+  { key: 'm:rhinestone', phrase: 'rhinestone', prompt: 'covered in rhinestones', words: ['rhinestone', 'rhinestones', 'crystal'] },
+];
+export const PATTERNS = [
+  { key: 'p:solid', phrase: 'solid', prompt: 'a single solid color with no pattern', words: ['solid', 'plain'] },
+  { key: 'p:striped', phrase: 'striped', prompt: 'stripes', words: ['striped', 'stripe', 'stripes', 'stripy'] },
+  { key: 'p:polka-dot', phrase: 'polka-dot', prompt: 'polka dots', words: ['polka', 'dot', 'dots', 'dotted', 'spotted'] },
+  { key: 'p:floral', phrase: 'floral', prompt: 'a floral flower pattern', words: ['floral', 'flower', 'flowers', 'botanical', 'rose'] },
+  { key: 'p:plaid', phrase: 'plaid', prompt: 'plaid tartan check', words: ['plaid', 'tartan', 'check', 'checked', 'gingham'] },
+  { key: 'p:houndstooth', phrase: 'houndstooth', prompt: 'houndstooth check', words: ['houndstooth', 'dogtooth'] },
+  { key: 'p:animal', phrase: 'animal-print', prompt: 'leopard, zebra or snake animal print', words: ['animal', 'leopard', 'zebra', 'snake', 'cheetah', 'print'] },
+  { key: 'p:geometric', phrase: 'geometric', prompt: 'a geometric pattern', words: ['geometric', 'diamond', 'triangle'] },
+  { key: 'p:paisley', phrase: 'paisley', prompt: 'paisley pattern', words: ['paisley', 'boteh'] },
+  { key: 'p:scroll', phrase: 'scrolled', prompt: 'baroque scrollwork pattern', words: ['scroll', 'baroque', 'filigree', 'ornate'] },
+  { key: 'p:greek-key', phrase: 'greek-key', prompt: 'greek key meander pattern', words: ['greek', 'key', 'meander'] },
+  { key: 'p:heart', phrase: 'heart-pattern', prompt: 'a pattern of hearts', words: ['heart', 'hearts'] },
+  { key: 'p:star', phrase: 'star-pattern', prompt: 'a pattern of stars', words: ['star', 'stars'] },
+  { key: 'p:ombre', phrase: 'ombré', prompt: 'an ombre color gradient', words: ['ombre', 'ombré', 'gradient'] },
+];
+export const FINISHES = [
+  { key: 'f:matte', phrase: 'matte', prompt: 'a flat matte surface', words: ['matte', 'flat'] },
+  { key: 'f:glossy', phrase: 'glossy', prompt: 'a glossy shiny surface', words: ['glossy', 'shiny', 'gloss'] },
+  { key: 'f:metallic', phrase: 'metallic', prompt: 'a metallic shine', words: ['metallic', 'shiny', 'foil'] },
+  { key: 'f:iridescent', phrase: 'iridescent', prompt: 'an iridescent rainbow shimmer', words: ['iridescent', 'holographic', 'shimmer', 'pearlescent', 'ab'] },
+  { key: 'f:sparkly', phrase: 'sparkly', prompt: 'sparkly glitter', words: ['sparkly', 'glitter', 'glittery', 'sparkle'] },
+  { key: 'f:sheer', phrase: 'sheer', prompt: 'a sheer see-through finish', words: ['sheer', 'transparent', 'see-through'] },
+  { key: 'f:textured', phrase: 'textured', prompt: 'a heavily textured surface', words: ['textured', 'texture', 'nubby', 'bumpy'] },
+  { key: 'f:vintage', phrase: 'vintage', prompt: 'an aged vintage antique look', words: ['vintage', 'antique', 'aged', 'distressed', 'retro'] },
 ];
 
 // Shapes Squeak names for small objects (beads, buttons, charms).
@@ -205,6 +360,7 @@ export function nameColor(r, g, b) {
 const TYPE_BY_KEY = new Map(ITEM_TYPES.map((t) => [t.key, t]));
 const COLOR_BY_KEY = new Map(TRIM_COLORS.map((c) => [c.key, c]));
 const SHAPE_BY_KEY = new Map(SHAPES.map((s) => [s.key, s]));
+const ATTR_BY_KEY = new Map([...MATERIALS, ...PATTERNS, ...FINISHES].map((a) => [a.key, a]));
 
 /** Everything a person might type for these tags, used for keyword matching. */
 export function tagSearchText(tags = []) {
@@ -214,10 +370,22 @@ export function tagSearchText(tags = []) {
       if (type) return [type.phrase, ...type.words, ...GROUPS[type.group].words];
       const group = GROUPS[key];
       if (group) return [group.phrase, ...group.words];
-      const entry = COLOR_BY_KEY.get(key) || SHAPE_BY_KEY.get(key);
+      if (key === 'n:several') return ['several', 'set', 'group', 'multiple', 'pieces'];
+      const entry = COLOR_BY_KEY.get(key) || SHAPE_BY_KEY.get(key) || ATTR_BY_KEY.get(key);
       return entry ? [entry.phrase || entry.key, ...entry.words] : [key];
     })
     .join(' ');
+}
+
+const PLURALS = { 'hook and eye': 'hooks and eyes', 'rhinestone cup chain': 'rhinestone cup chains' };
+function pluralize(noun) {
+  if (PLURALS[noun]) return PLURALS[noun];
+  const words = noun.split(' ');
+  let last = words.pop();
+  if (/(s|x|ch|sh)$/i.test(last)) last += 'es';
+  else if (/[^aeiou]y$/i.test(last)) last = `${last.slice(0, -1)}ies`;
+  else last += 's';
+  return [...words, last].join(' ');
 }
 
 /** How Squeak says it: "an orange trapezoid bead", "a gold metal ring", "a white lace trim". */
@@ -231,7 +399,17 @@ export function describeTags(tags = [], { article = true } = {}) {
   if (type?.key === 'shaped-beads' && shape) noun = 'bead';
   // don't repeat a shape the noun already says ("round bead", not "round round bead")
   const shapeWord = shape && !noun.includes(shape.key) ? shape.phrase || shape.key : '';
-  const words = [color ? color.phrase || color.key : '', shapeWord, noun].filter(Boolean).join(' ');
+  // a pattern ("floral") or, for small objects, a material ("wooden") the noun doesn't already say
+  const pattern = tags.map((t) => ATTR_BY_KEY.get(t)).find((a) => a && a.key.startsWith('p:') && a.key !== 'p:solid');
+  const material = ['bead', 'button', 'embellishment'].includes(type?.group)
+    ? tags.map((t) => ATTR_BY_KEY.get(t)).find((a) => a && a.key.startsWith('m:') && !noun.includes(a.phrase))
+    : null;
+  const words = [color ? color.phrase || color.key : '', pattern?.phrase || '', material?.phrase || '', shapeWord, noun].filter(Boolean).join(' ');
+  // several of a discrete item: say it in the plural ("gold metal O-rings"); trims stay as they are
+  const discrete = ['bead', 'button', 'hardware', 'embellishment'].includes(type?.group || (group && Object.keys(GROUPS).find((k) => GROUPS[k] === group)));
+  if (tags.includes('n:several') && discrete && !type?.mass && !(!type && group?.mass)) {
+    return [color ? color.phrase || color.key : '', pattern?.phrase || '', material?.phrase || '', shapeWord, pluralize(noun)].filter(Boolean).join(' ');
+  }
   if (!article || type?.mass || (!type && group?.mass)) return words;
   return `${/^[aeiou]/i.test(words) ? 'an' : 'a'} ${words}`;
 }
